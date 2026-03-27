@@ -32,22 +32,83 @@
       </div>
     </div>
 
-    <!-- QUESTION SETUP (Host only) -->
+    <!-- QUESTION SETUP (Host) -->
     <div id="screen-setup" class="screen">
       <div class="card wide">
         <div class="setup-header">
-          <h2>Prep Your Questions</h2>
+          <h2>Create Your Quiz</h2>
           <div class="setup-code-pill">Room: <span id="setup-room-code"></span></div>
         </div>
-        <p class="setup-hint">Add questions and your own answers before opening the lobby. You can also skip this and type live.</p>
-        <div class="setup-inputs">
-          <input type="text" id="setup-question" placeholder="Question..." maxlength="200" autocomplete="off">
-          <input type="text" id="setup-answer" placeholder="Your answer (optional)..." maxlength="150" autocomplete="off">
-          <button class="btn btn-secondary" onclick="addPreloadedQuestion()">+ Add</button>
+
+        <!-- Type tabs -->
+        <div class="type-tabs">
+          <button class="type-tab active" onclick="selectQuestionType('open', this)">Open Ended</button>
+          <button class="type-tab" onclick="selectQuestionType('choice', this)">Multiple Choice</button>
+          <button class="type-tab" onclick="selectQuestionType('truefalse', this)">True / False</button>
         </div>
+
+        <!-- Open ended inputs -->
+        <div id="fields-open" class="setup-fields">
+          <input type="text" id="setup-q-open" placeholder="Question..." maxlength="200" autocomplete="off">
+          <input type="text" id="setup-a-open" placeholder="Your answer (optional)..." maxlength="150" autocomplete="off">
+        </div>
+
+        <!-- Multiple choice inputs -->
+        <div id="fields-choice" class="setup-fields" style="display:none">
+          <input type="text" id="setup-q-choice" placeholder="Question..." maxlength="200" autocomplete="off">
+          <div class="choice-input-rows">
+            <div class="choice-input-row">
+              <span class="ci-dot" style="background:#e21b3c">&blacktriangle;</span>
+              <input type="text" id="setup-opt-0" placeholder="Option 1" maxlength="80" autocomplete="off">
+              <label class="ci-correct"><input type="radio" name="correct-choice" value="0"><span class="ci-check">&check;</span></label>
+            </div>
+            <div class="choice-input-row">
+              <span class="ci-dot" style="background:#1368ce">&diams;</span>
+              <input type="text" id="setup-opt-1" placeholder="Option 2" maxlength="80" autocomplete="off">
+              <label class="ci-correct"><input type="radio" name="correct-choice" value="1"><span class="ci-check">&check;</span></label>
+            </div>
+            <div class="choice-input-row">
+              <span class="ci-dot" style="background:#d89e00">&bull;</span>
+              <input type="text" id="setup-opt-2" placeholder="Option 3 (optional)" maxlength="80" autocomplete="off">
+              <label class="ci-correct"><input type="radio" name="correct-choice" value="2"><span class="ci-check">&check;</span></label>
+            </div>
+            <div class="choice-input-row">
+              <span class="ci-dot" style="background:#26890c">&FilledSmallSquare;</span>
+              <input type="text" id="setup-opt-3" placeholder="Option 4 (optional)" maxlength="80" autocomplete="off">
+              <label class="ci-correct"><input type="radio" name="correct-choice" value="3"><span class="ci-check">&check;</span></label>
+            </div>
+          </div>
+          <p class="field-hint">Tap &check; to mark the correct answer</p>
+        </div>
+
+        <!-- True / False inputs -->
+        <div id="fields-truefalse" class="setup-fields" style="display:none">
+          <input type="text" id="setup-q-tf" placeholder="True or false statement..." maxlength="200" autocomplete="off">
+          <div class="tf-toggle">
+            <label class="tf-opt"><input type="radio" name="correct-tf" value="0" checked><span class="tf-pill tf-true">True</span></label>
+            <label class="tf-opt"><input type="radio" name="correct-tf" value="1"><span class="tf-pill tf-false">False</span></label>
+          </div>
+          <p class="field-hint">Select the correct answer</p>
+        </div>
+
+        <!-- Time limit -->
+        <div class="time-selector">
+          <span class="time-label">Time limit:</span>
+          <div class="time-pills">
+            <label class="time-pill"><input type="radio" name="time-limit" value="10"><span>10s</span></label>
+            <label class="time-pill"><input type="radio" name="time-limit" value="20"><span>20s</span></label>
+            <label class="time-pill"><input type="radio" name="time-limit" value="30" checked><span>30s</span></label>
+            <label class="time-pill"><input type="radio" name="time-limit" value="45"><span>45s</span></label>
+            <label class="time-pill"><input type="radio" name="time-limit" value="60"><span>60s</span></label>
+          </div>
+        </div>
+
+        <button class="btn btn-secondary" onclick="addPreloadedQuestion()">+ Add Question</button>
+
         <div id="preloaded-list" class="preloaded-list">
           <p class="empty-hint">No questions added yet.</p>
         </div>
+
         <button class="btn btn-primary" onclick="goToLobby()">Open Lobby &rarr;</button>
       </div>
     </div>
@@ -75,10 +136,15 @@
         </div>
         <h2>Players</h2>
         <div id="player-list" class="player-list"></div>
-        <div id="admin-controls">
-          <div id="preloaded-queue" style="display:none"></div>
-          <textarea id="question-input" placeholder="Type a question..." rows="2" maxlength="200"></textarea>
-          <button class="btn btn-primary" onclick="startQuestion()">Ask the Room</button>
+        <div id="admin-controls" style="display:none">
+          <div id="queue-info" class="queue-info" style="display:none">
+            <div class="queue-count-text"><span id="queue-count">0</span> questions ready</div>
+            <button class="btn btn-primary btn-glow" onclick="startNextQuestion()">Next Question</button>
+          </div>
+          <div id="custom-q-section">
+            <textarea id="question-input" placeholder="Or type a custom question..." rows="2" maxlength="200"></textarea>
+            <button class="btn btn-secondary" id="custom-q-btn" onclick="startCustomQuestion()">Ask the Room</button>
+          </div>
         </div>
       </div>
     </div>
@@ -92,17 +158,21 @@
         </div>
         <h2>Players</h2>
         <div id="waiting-player-list" class="player-list"></div>
-        <p class="waiting-text">Waiting for the host to ask a question...</p>
+        <p class="waiting-text">Waiting for the host to start...</p>
       </div>
     </div>
 
-    <!-- ANSWERING -->
+    <!-- ANSWERING — OPEN -->
     <div id="screen-answer" class="screen">
       <div class="card wide">
+        <div class="timer-bar-track">
+          <div id="open-timer-bar" class="timer-bar"></div>
+        </div>
         <div class="question-display">
-          <span class="round-badge" id="round-badge">Round 1</span>
+          <span class="round-badge" id="round-badge">Question 1</span>
           <h2 id="answer-question"></h2>
         </div>
+        <div id="open-timer-num" class="timer-number">30</div>
         <textarea id="answer-input" placeholder="Type your answer..." rows="2" maxlength="150"></textarea>
         <button class="btn btn-primary" id="submit-answer-btn" onclick="submitAnswer()">Lock In</button>
         <div id="answer-status" class="status"></div>
@@ -110,7 +180,23 @@
       </div>
     </div>
 
-    <!-- VOTING -->
+    <!-- ANSWERING — CHOICE / TRUE-FALSE -->
+    <div id="screen-answer-choice" class="screen">
+      <div class="card wide">
+        <div class="timer-bar-track">
+          <div id="choice-timer-bar" class="timer-bar"></div>
+        </div>
+        <div class="question-display">
+          <span class="round-badge" id="choice-round-badge">Question 1</span>
+          <h2 id="choice-question-text"></h2>
+        </div>
+        <div id="choice-timer-num" class="timer-number">30</div>
+        <div id="choice-options-grid" class="choice-grid"></div>
+        <div id="choice-answer-status" class="status"></div>
+      </div>
+    </div>
+
+    <!-- VOTING (Open only) -->
     <div id="screen-vote" class="screen">
       <div class="card wide">
         <div class="question-display">
@@ -122,6 +208,18 @@
       </div>
     </div>
 
+    <!-- CHOICE / TF RESULTS -->
+    <div id="screen-choice-results" class="screen">
+      <div class="card wide">
+        <h2 id="cr-question"></h2>
+        <div id="cr-feedback" class="choice-feedback"></div>
+        <div id="cr-breakdown" class="choice-breakdown"></div>
+        <div id="cr-points" class="points-display"></div>
+        <button class="btn btn-primary" id="cr-continue-btn" style="display:none" onclick="showChoiceLeaderboard()">Continue</button>
+        <p id="cr-waiting" class="waiting-text" style="display:none">Waiting for host...</p>
+      </div>
+    </div>
+
     <!-- LEADERBOARD (Animated) -->
     <div id="screen-leaderboard" class="screen">
       <div id="confetti-container"></div>
@@ -129,11 +227,12 @@
         <div class="lb-title">Leaderboard</div>
         <div id="leaderboard-podium" class="podium-container"></div>
         <div id="leaderboard-rest" class="lb-rest"></div>
-        <button class="btn btn-primary" id="leaderboard-continue-btn" style="display:none" onclick="showResultsAfterLeaderboard()">See Round Results</button>
+        <button class="btn btn-primary" id="leaderboard-continue-btn" style="display:none" onclick="leaderboardContinue()">Continue</button>
+        <p id="leaderboard-waiting" class="waiting-text" style="display:none">Waiting for host...</p>
       </div>
     </div>
 
-    <!-- RESULTS -->
+    <!-- RESULTS (Open only detail) -->
     <div id="screen-results" class="screen">
       <div class="card wide">
         <h2 id="results-question"></h2>
