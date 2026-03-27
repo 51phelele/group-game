@@ -18,14 +18,9 @@ function generateRoomCode() {
   return code;
 }
 
-// How many non-host answers do we expect?
-function expectedAnswers(room) {
-  // For open with hostAnswer: host answer is auto-injected → expect all players
-  if (room.currentQuestion.type === 'open' && room.currentQuestion.hostAnswer) {
-    return room.players.length;
-  }
-  // Otherwise host doesn't answer → players minus host
-  return room.players.length - 1;
+// Get only actual players (not host)
+function getPlayers(room) {
+  return room.players.filter(p => p.id !== room.admin.id);
 }
 
 function playerData(p) {
@@ -40,8 +35,8 @@ io.on('connection', (socket) => {
     const { name, avatar } = data;
     const code = generateRoomCode();
     rooms[code] = {
-      admin: { id: socket.id, name },
-      players: [{ id: socket.id, name, avatar: avatar || '🦊', score: 0 }],
+      admin: { id: socket.id, name, avatar: avatar || '🦊' },
+      players: [],
       phase: 'lobby',
       questionQueue: [],
       totalQuestions: 0,
@@ -57,7 +52,7 @@ io.on('connection', (socket) => {
     socket.roomCode = code;
     socket.playerName = name;
     callback({ success: true, code });
-    io.to(code).emit('player-list', rooms[code].players.map(playerData));
+    io.to(code).emit('player-list', getPlayers(rooms[code]).map(playerData));
   });
 
   // ── Host uploads preloaded questions ──
@@ -82,7 +77,7 @@ io.on('connection', (socket) => {
     socket.roomCode = code;
     socket.playerName = name;
     callback({ success: true });
-    io.to(code).emit('player-list', room.players.map(playerData));
+    io.to(code).emit('player-list', getPlayers(room).map(playerData));
   });
 
   // ── Start a question (null = next from queue) ──
@@ -114,34 +109,10 @@ io.on('connection', (socket) => {
       payload.options = ['True', 'False'];
     }
 
-    // Send question to players (not host)
-    for (const p of room.players) {
-      if (p.id === room.admin.id) {
-        io.to(p.id).emit('host-question-view', payload);
-      } else {
-        io.to(p.id).emit('new-question', payload);
-      }
-    }
-
-    // Auto-submit host answer for open questions
-    if (qData.type === 'open' && qData.hostAnswer) {
-      const code = socket.roomCode;
-      setTimeout(() => {
-        const r = rooms[code];
-        if (!r || r.phase !== 'answering') return;
-        r.answers[room.admin.id] = {
-          name: room.admin.name,
-          answer: qData.hostAnswer,
-          elapsed: 0.5,
-        };
-        const answered = Object.keys(r.answers).length;
-        const total = expectedAnswers(r);
-        io.to(code).emit('answer-count', { answered, total });
-        if (answered >= total) {
-          clearTimer(code);
-          handleAllAnswered(code);
-        }
-      }, 300);
+    // Send host the spectator view, players the question
+    io.to(room.admin.id).emit('host-question-view', payload);
+    for (const p of getPlayers(room)) {
+      io.to(p.id).emit('new-question', payload);
     }
 
     startTimer(socket.roomCode, qData.timeLimit || 30);
@@ -162,7 +133,7 @@ io.on('connection', (socket) => {
     };
 
     const answered = Object.keys(room.answers).length;
-    const total = expectedAnswers(room);
+    const total = getPlayers(room).length;
     io.to(socket.roomCode).emit('answer-count', { answered, total });
 
     if (answered >= total) {
@@ -177,8 +148,7 @@ io.on('connection', (socket) => {
     if (!room || room.admin.id !== socket.id) return;
     if (room.phase === 'answering' && room.currentQuestion.type === 'open') {
       clearTimer(socket.roomCode);
-      const nonHostAnswers = Object.keys(room.answers).filter(id => id !== room.admin.id).length;
-      if (nonHostAnswers >= 2) {
+      if (Object.keys(room.answers).length >= 2) {
         startVoting(socket.roomCode);
       } else {
         showOpenResults(socket.roomCode);
@@ -194,7 +164,7 @@ io.on('connection', (socket) => {
     if (votedForId === socket.id) return;
     room.votes[socket.id] = votedForId;
 
-    const eligibleVoters = Object.keys(room.answers).filter(id => id !== room.admin.id);
+    const eligibleVoters = Object.keys(room.answers);
     const votesIn = Object.keys(room.votes).length;
     io.to(socket.roomCode).emit('vote-count', { voted: votesIn, total: eligibleVoters.length });
 
@@ -293,8 +263,7 @@ function handleAllAnswered(code) {
   if (qType === 'choice' || qType === 'truefalse') {
     showChoiceResults(code);
   } else {
-    const nonHostAnswers = Object.keys(room.answers).filter(id => id !== room.admin.id).length;
-    if (nonHostAnswers >= 2) {
+    if (Object.keys(room.answers).length >= 2) {
       startVoting(code);
     } else {
       showOpenResults(code);
@@ -306,9 +275,7 @@ function startVoting(code) {
   const room = rooms[code];
   room.phase = 'voting';
 
-  // Build answer list EXCLUDING host
   const answerList = Object.entries(room.answers)
-    .filter(([id]) => id !== room.admin.id)
     .map(([id, data]) => ({ id, answer: data.answer }));
 
   // Shuffle
@@ -317,12 +284,11 @@ function startVoting(code) {
     [answerList[i], answerList[j]] = [answerList[j], answerList[i]];
   }
 
-  // Send voting options to each non-host player
+  // Send host the spectator voting view
+  io.to(room.admin.id).emit('host-voting-view', { question: room.currentQuestion.question });
+
+  // Send voting options to each player
   for (const player of room.players) {
-    if (player.id === room.admin.id) {
-      io.to(player.id).emit('host-voting-view', { question: room.currentQuestion.question });
-      continue;
-    }
     const personalList = answerList.map(a => ({
       ...a,
       isMine: a.id === player.id,
@@ -347,9 +313,8 @@ function showChoiceResults(code) {
 
   const breakdown = options.map(() => 0);
 
-  // Score each non-host player
+  // Score each player
   for (const [id, data] of Object.entries(room.answers)) {
-    if (id === room.admin.id) continue;
     const idx = parseInt(data.answer);
     if (idx >= 0 && idx < options.length) breakdown[idx]++;
 
@@ -369,7 +334,6 @@ function showChoiceResults(code) {
     question: room.currentQuestion.question,
     type: room.currentQuestion.type,
     playerResults: room.players
-      .filter(p => p.id !== room.admin.id)
       .map(p => {
         const ans = room.answers[p.id];
         const correct = ans ? parseInt(ans.answer) === correctIndex : false;
@@ -395,12 +359,24 @@ function showChoiceResults(code) {
       options,
       correctIndex,
       breakdown,
-      myChoice: player.id === room.admin.id ? -2 : myChoice, // -2 = host
-      isCorrect: player.id === room.admin.id ? null : isCorrect,
-      pointsEarned: player.id === room.admin.id ? 0 : pointsEarned,
+      myChoice,
+      isCorrect,
+      pointsEarned,
       scores,
     });
   }
+
+  // Send host the results as spectator
+  io.to(room.admin.id).emit('choice-results', {
+    question: room.currentQuestion.question,
+    options,
+    correctIndex,
+    breakdown,
+    myChoice: -2,
+    isCorrect: null,
+    pointsEarned: 0,
+    scores,
+  });
 }
 
 function showOpenResults(code) {
@@ -412,9 +388,7 @@ function showOpenResults(code) {
     voteCounts[votedFor] = (voteCounts[votedFor] || 0) + 1;
   }
 
-  // Results EXCLUDE host
   const results = Object.entries(room.answers)
-    .filter(([id]) => id !== room.admin.id)
     .map(([id, data]) => {
       const voteCount = voteCounts[id] || 0;
       const player = room.players.find(p => p.id === id);
@@ -440,7 +414,6 @@ function showOpenResults(code) {
     question: room.currentQuestion.question,
     type: 'open',
     playerResults: room.players
-      .filter(p => p.id !== room.admin.id)
       .map(p => {
         const votes = voteCounts[p.id] || 0;
         return { name: p.name, avatar: p.avatar, votes, answered: !!room.answers[p.id] };
