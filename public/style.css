@@ -1,0 +1,379 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Nunito', sans-serif;
+  background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+  min-height: 100vh;
+  color: #fff;
+  overflow-x: hidden;
+}
+
+#app {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.screen {
+  display: none;
+  width: 100%;
+  max-width: 500px;
+  animation: fadeIn 0.3s ease;
+}
+
+.screen.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  padding: 40px 32px;
+  text-align: center;
+}
+
+.card.wide {
+  max-width: 600px;
+}
+
+.logo {
+  font-family: 'Fredoka One', cursive;
+  font-size: 3rem;
+  background: linear-gradient(135deg, #f7971e, #ffd200);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 8px;
+  letter-spacing: 2px;
+}
+
+.tagline {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1.1rem;
+  margin-bottom: 32px;
+  font-weight: 600;
+}
+
+.home-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.btn {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1rem;
+  border: none;
+  border-radius: 14px;
+  padding: 14px 28px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.5px;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #f7971e, #ffd200);
+  color: #1a1a2e;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 4px 20px rgba(247, 151, 30, 0.4);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.btn-back {
+  background: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9rem;
+  margin-top: 8px;
+}
+
+.btn-small {
+  font-size: 0.85rem;
+  padding: 10px 20px;
+  margin-top: 12px;
+}
+
+input, textarea {
+  width: 100%;
+  font-family: 'Nunito', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  outline: none;
+  margin-bottom: 12px;
+  transition: border-color 0.2s;
+  resize: none;
+}
+
+input::placeholder, textarea::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+input:focus, textarea:focus {
+  border-color: rgba(247, 151, 30, 0.6);
+}
+
+h2 {
+  font-size: 1.4rem;
+  margin-bottom: 20px;
+  font-weight: 800;
+}
+
+.room-code-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: rgba(247, 151, 30, 0.1);
+  border-radius: 16px;
+  border: 1px solid rgba(247, 151, 30, 0.25);
+}
+
+.room-code-display .label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 4px;
+}
+
+.room-code-display .code {
+  font-family: 'Fredoka One', cursive;
+  font-size: 2.5rem;
+  color: #ffd200;
+  letter-spacing: 8px;
+}
+
+.qr-container {
+  margin-top: 16px;
+}
+
+.qr-container canvas {
+  border-radius: 12px;
+}
+
+.qr-hint {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 6px;
+}
+
+.player-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.player-chip {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.player-chip .score {
+  color: #ffd200;
+  margin-left: 6px;
+  font-size: 0.8rem;
+}
+
+.question-display {
+  margin-bottom: 24px;
+}
+
+.round-badge {
+  display: inline-block;
+  background: rgba(247, 151, 30, 0.2);
+  color: #ffd200;
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 4px 14px;
+  border-radius: 20px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.status {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9rem;
+  margin-top: 12px;
+  font-weight: 600;
+}
+
+.waiting-text {
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+  margin-top: 8px;
+}
+
+.vote-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.vote-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 16px 20px;
+  text-align: left;
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vote-card:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(247, 151, 30, 0.4);
+}
+
+.vote-card.mine {
+  opacity: 0.4;
+  cursor: default;
+  border-style: dashed;
+}
+
+.vote-card.mine::after {
+  content: ' (yours)';
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 0.85rem;
+}
+
+.vote-card.selected {
+  border-color: #ffd200;
+  background: rgba(247, 151, 30, 0.15);
+}
+
+.results-list {
+  margin-bottom: 28px;
+}
+
+.result-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+.result-item.winner {
+  background: rgba(247, 151, 30, 0.15);
+  border-color: rgba(247, 151, 30, 0.35);
+}
+
+.result-rank {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.4rem;
+  color: #ffd200;
+  min-width: 32px;
+}
+
+.result-content {
+  flex: 1;
+}
+
+.result-answer {
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 2px;
+}
+
+.result-author {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.result-votes {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.1rem;
+  color: #ffd200;
+  white-space: nowrap;
+}
+
+.scoreboard {
+  margin-bottom: 24px;
+}
+
+.score-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-weight: 700;
+}
+
+.score-row:first-child {
+  color: #ffd200;
+  font-size: 1.1rem;
+}
+
+.score-points {
+  font-family: 'Fredoka One', cursive;
+}
+
+.error {
+  color: #ff6b6b;
+  font-size: 0.9rem;
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+@media (max-width: 500px) {
+  .card {
+    padding: 28px 20px;
+  }
+  .logo {
+    font-size: 2.2rem;
+  }
+  .room-code-display .code {
+    font-size: 2rem;
+  }
+}
