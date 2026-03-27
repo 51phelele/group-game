@@ -10,7 +10,7 @@
 <body>
   <div id="app">
 
-    <!-- HOME SCREEN -->
+    <!-- HOME -->
     <div id="screen-home" class="screen active">
       <div class="card">
         <h1 class="logo">VIBE CHECK</h1>
@@ -32,6 +32,26 @@
       </div>
     </div>
 
+    <!-- QUESTION SETUP (Host only) -->
+    <div id="screen-setup" class="screen">
+      <div class="card wide">
+        <div class="setup-header">
+          <h2>Prep Your Questions</h2>
+          <div class="setup-code-pill">Room: <span id="setup-room-code"></span></div>
+        </div>
+        <p class="setup-hint">Add questions and your own answers before opening the lobby. You can also skip this and type live.</p>
+        <div class="setup-inputs">
+          <input type="text" id="setup-question" placeholder="Question..." maxlength="200" autocomplete="off">
+          <input type="text" id="setup-answer" placeholder="Your answer (optional)..." maxlength="150" autocomplete="off">
+          <button class="btn btn-secondary" onclick="addPreloadedQuestion()">+ Add</button>
+        </div>
+        <div id="preloaded-list" class="preloaded-list">
+          <p class="empty-hint">No questions added yet.</p>
+        </div>
+        <button class="btn btn-primary" onclick="goToLobby()">Open Lobby &rarr;</button>
+      </div>
+    </div>
+
     <!-- JOIN ROOM -->
     <div id="screen-join" class="screen">
       <div class="card">
@@ -44,7 +64,7 @@
       </div>
     </div>
 
-    <!-- LOBBY (Admin view) -->
+    <!-- LOBBY (Admin) -->
     <div id="screen-lobby" class="screen">
       <div class="card wide">
         <div class="room-code-display">
@@ -56,13 +76,14 @@
         <h2>Players</h2>
         <div id="player-list" class="player-list"></div>
         <div id="admin-controls">
-          <textarea id="question-input" placeholder="Type your question..." rows="2" maxlength="200"></textarea>
+          <div id="preloaded-queue" style="display:none"></div>
+          <textarea id="question-input" placeholder="Type a question..." rows="2" maxlength="200"></textarea>
           <button class="btn btn-primary" onclick="startQuestion()">Ask the Room</button>
         </div>
       </div>
     </div>
 
-    <!-- WAITING (Player in lobby) -->
+    <!-- WAITING (Player) -->
     <div id="screen-waiting" class="screen">
       <div class="card wide">
         <div class="room-code-display">
@@ -98,6 +119,17 @@
         <div id="vote-options" class="vote-options"></div>
         <div id="vote-status" class="status"></div>
         <button class="btn btn-small btn-secondary" id="force-results-btn" style="display:none" onclick="forceResults()">Skip to Results</button>
+      </div>
+    </div>
+
+    <!-- LEADERBOARD (Animated) -->
+    <div id="screen-leaderboard" class="screen">
+      <div id="confetti-container"></div>
+      <div class="card wide">
+        <div class="lb-title">Leaderboard</div>
+        <div id="leaderboard-podium" class="podium-container"></div>
+        <div id="leaderboard-rest" class="lb-rest"></div>
+        <button class="btn btn-primary" id="leaderboard-continue-btn" style="display:none" onclick="showResultsAfterLeaderboard()">See Round Results</button>
       </div>
     </div>
 
