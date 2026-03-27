@@ -27,8 +27,24 @@
       <div class="card">
         <h2>Create a Game</h2>
         <input type="text" id="admin-name" placeholder="Your name" maxlength="20" autocomplete="off">
+        <p class="avatar-label">Pick your avatar</p>
+        <div id="create-avatar-picker" class="avatar-picker"></div>
         <button class="btn btn-primary" onclick="createRoom()">Start Room</button>
         <button class="btn btn-back" onclick="showScreen('screen-home')">Back</button>
+      </div>
+    </div>
+
+    <!-- JOIN ROOM -->
+    <div id="screen-join" class="screen">
+      <div class="card">
+        <h2>Join a Game</h2>
+        <input type="text" id="join-code" placeholder="Room code" maxlength="4" autocomplete="off" style="text-transform:uppercase">
+        <input type="text" id="join-name" placeholder="Your name" maxlength="20" autocomplete="off">
+        <p class="avatar-label">Pick your avatar</p>
+        <div id="join-avatar-picker" class="avatar-picker"></div>
+        <button class="btn btn-primary" onclick="joinRoom()">Join</button>
+        <button class="btn btn-back" onclick="showScreen('screen-home')">Back</button>
+        <p id="join-error" class="error"></p>
       </div>
     </div>
 
@@ -40,20 +56,17 @@
           <div class="setup-code-pill">Room: <span id="setup-room-code"></span></div>
         </div>
 
-        <!-- Type tabs -->
         <div class="type-tabs">
           <button class="type-tab active" onclick="selectQuestionType('open', this)">Open Ended</button>
           <button class="type-tab" onclick="selectQuestionType('choice', this)">Multiple Choice</button>
           <button class="type-tab" onclick="selectQuestionType('truefalse', this)">True / False</button>
         </div>
 
-        <!-- Open ended inputs -->
         <div id="fields-open" class="setup-fields">
           <input type="text" id="setup-q-open" placeholder="Question..." maxlength="200" autocomplete="off">
           <input type="text" id="setup-a-open" placeholder="Your answer (optional)..." maxlength="150" autocomplete="off">
         </div>
 
-        <!-- Multiple choice inputs -->
         <div id="fields-choice" class="setup-fields" style="display:none">
           <input type="text" id="setup-q-choice" placeholder="Question..." maxlength="200" autocomplete="off">
           <div class="choice-input-rows">
@@ -81,7 +94,6 @@
           <p class="field-hint">Tap &check; to mark the correct answer</p>
         </div>
 
-        <!-- True / False inputs -->
         <div id="fields-truefalse" class="setup-fields" style="display:none">
           <input type="text" id="setup-q-tf" placeholder="True or false statement..." maxlength="200" autocomplete="off">
           <div class="tf-toggle">
@@ -91,7 +103,6 @@
           <p class="field-hint">Select the correct answer</p>
         </div>
 
-        <!-- Time limit -->
         <div class="time-selector">
           <span class="time-label">Time limit:</span>
           <div class="time-pills">
@@ -113,18 +124,6 @@
       </div>
     </div>
 
-    <!-- JOIN ROOM -->
-    <div id="screen-join" class="screen">
-      <div class="card">
-        <h2>Join a Game</h2>
-        <input type="text" id="join-code" placeholder="Room code" maxlength="4" autocomplete="off" style="text-transform:uppercase">
-        <input type="text" id="join-name" placeholder="Your name" maxlength="20" autocomplete="off">
-        <button class="btn btn-primary" onclick="joinRoom()">Join</button>
-        <button class="btn btn-back" onclick="showScreen('screen-home')">Back</button>
-        <p id="join-error" class="error"></p>
-      </div>
-    </div>
-
     <!-- LOBBY (Admin) -->
     <div id="screen-lobby" class="screen">
       <div class="card wide">
@@ -137,13 +136,9 @@
         <h2>Players</h2>
         <div id="player-list" class="player-list"></div>
         <div id="admin-controls" style="display:none">
-          <div id="queue-info" class="queue-info" style="display:none">
+          <div id="queue-info" class="queue-info">
             <div class="queue-count-text"><span id="queue-count">0</span> questions ready</div>
             <button class="btn btn-primary btn-glow" onclick="startNextQuestion()">Next Question</button>
-          </div>
-          <div id="custom-q-section">
-            <textarea id="question-input" placeholder="Or type a custom question..." rows="2" maxlength="200"></textarea>
-            <button class="btn btn-secondary" id="custom-q-btn" onclick="startCustomQuestion()">Ask the Room</button>
           </div>
         </div>
       </div>
@@ -162,7 +157,35 @@
       </div>
     </div>
 
-    <!-- ANSWERING — OPEN -->
+    <!-- HOST WAITING (spectator during answering) -->
+    <div id="screen-host-waiting" class="screen">
+      <div class="card wide">
+        <div class="timer-bar-track">
+          <div id="host-timer-bar" class="timer-bar"></div>
+        </div>
+        <div class="question-display">
+          <span class="round-badge" id="host-round-badge">Question 1</span>
+          <h2 id="host-question-text"></h2>
+        </div>
+        <div id="host-timer-num" class="timer-number">30</div>
+        <div id="host-answer-count" class="status">Waiting for answers...</div>
+        <button class="btn btn-small btn-secondary" id="host-force-vote-btn" style="display:none" onclick="forceVoting()">Skip to Voting</button>
+      </div>
+    </div>
+
+    <!-- HOST VOTING VIEW (spectator during voting) -->
+    <div id="screen-host-voting" class="screen">
+      <div class="card wide">
+        <div class="question-display">
+          <h2 id="host-vote-question"></h2>
+        </div>
+        <p class="host-spectator-text">Players are voting...</p>
+        <div id="host-vote-count" class="status"></div>
+        <button class="btn btn-small btn-secondary" onclick="forceResults()">Skip to Results</button>
+      </div>
+    </div>
+
+    <!-- ANSWERING — OPEN (players only) -->
     <div id="screen-answer" class="screen">
       <div class="card wide">
         <div class="timer-bar-track">
@@ -176,11 +199,10 @@
         <textarea id="answer-input" placeholder="Type your answer..." rows="2" maxlength="150"></textarea>
         <button class="btn btn-primary" id="submit-answer-btn" onclick="submitAnswer()">Lock In</button>
         <div id="answer-status" class="status"></div>
-        <button class="btn btn-small btn-secondary" id="force-vote-btn" style="display:none" onclick="forceVoting()">Skip to Voting</button>
       </div>
     </div>
 
-    <!-- ANSWERING — CHOICE / TRUE-FALSE -->
+    <!-- ANSWERING — CHOICE / TRUE-FALSE (players only) -->
     <div id="screen-answer-choice" class="screen">
       <div class="card wide">
         <div class="timer-bar-track">
@@ -196,7 +218,7 @@
       </div>
     </div>
 
-    <!-- VOTING (Open only) -->
+    <!-- VOTING (players only) -->
     <div id="screen-vote" class="screen">
       <div class="card wide">
         <div class="question-display">
@@ -204,7 +226,6 @@
         </div>
         <div id="vote-options" class="vote-options"></div>
         <div id="vote-status" class="status"></div>
-        <button class="btn btn-small btn-secondary" id="force-results-btn" style="display:none" onclick="forceResults()">Skip to Results</button>
       </div>
     </div>
 
@@ -232,7 +253,7 @@
       </div>
     </div>
 
-    <!-- RESULTS (Open only detail) -->
+    <!-- RESULTS (Open detail) -->
     <div id="screen-results" class="screen">
       <div class="card wide">
         <h2 id="results-question"></h2>
@@ -241,6 +262,18 @@
         <div id="scoreboard" class="scoreboard"></div>
         <button class="btn btn-primary" id="next-round-btn" style="display:none" onclick="nextRound()">Next Round</button>
         <p id="results-waiting" class="waiting-text">Waiting for host...</p>
+      </div>
+    </div>
+
+    <!-- GAME OVER SUMMARY -->
+    <div id="screen-game-over" class="screen">
+      <div class="card wide">
+        <h1 class="logo" style="font-size:2rem;margin-bottom:4px">GAME OVER</h1>
+        <div class="lb-title" style="margin-bottom:16px">Final Standings</div>
+        <div id="final-standings" class="final-standings"></div>
+        <h3 style="margin-top:24px;margin-bottom:12px">Round-by-Round</h3>
+        <div id="game-summary" class="game-summary"></div>
+        <button class="btn btn-primary" style="margin-top:24px" onclick="location.reload()">Play Again</button>
       </div>
     </div>
 
