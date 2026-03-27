@@ -215,13 +215,14 @@ function generateQR(containerId, code) {
   container.innerHTML = '';
 
   const joinUrl = `${window.location.origin}?code=${code}`;
-  const canvas = document.createElement('canvas');
-  container.appendChild(canvas);
 
-  QRCode.toCanvas(canvas, joinUrl, {
+  new QRCode(container, {
+    text: joinUrl,
     width: 180,
-    margin: 2,
-    color: { dark: '#1a1a2e', light: '#ffffff' },
+    height: 180,
+    colorDark: '#1a1a2e',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M,
   });
 }
 
