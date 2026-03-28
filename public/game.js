@@ -52,6 +52,29 @@ function selectQuestionType(type, btn) {
   btn.classList.add('active');
   document.querySelectorAll('.setup-fields').forEach(f => f.style.display = 'none');
   document.getElementById('fields-' + type).style.display = 'block';
+
+  // Update time pills based on type
+  updateTimePills(type);
+
+  // Show/hide points selector (not for consensus)
+  document.getElementById('points-selector').style.display =
+    type === 'consensus' ? 'none' : '';
+}
+
+function updateTimePills(type) {
+  var container = document.getElementById('time-pills');
+  var times, labels;
+  if (type === 'consensus') {
+    times = [30, 60, 90, 120, 180];
+    labels = ['30s', '1min', '1:30', '2min', '3min'];
+  } else {
+    times = [10, 20, 30, 45, 60];
+    labels = ['10s', '20s', '30s', '45s', '60s'];
+  }
+  container.innerHTML = times.map(function(t, i) {
+    return '<label class="time-pill"><input type="radio" name="time-limit" value="' + t + '"' +
+      (t === 30 ? ' checked' : '') + '><span>' + labels[i] + '</span></label>';
+  }).join('');
 }
 
 // ── Setup — add question ──
@@ -59,16 +82,27 @@ function addPreloadedQuestion() {
   const type = selectedSetupType;
   const timeRadio = document.querySelector('input[name="time-limit"]:checked');
   const timeLimit = timeRadio ? parseInt(timeRadio.value) : 30;
+  const pointsRadio = document.querySelector('input[name="max-points"]:checked');
+  const maxPoints = pointsRadio ? parseInt(pointsRadio.value) : 1000;
   let data;
 
   if (type === 'open') {
     const q = document.getElementById('setup-q-open').value.trim();
     if (!q) return;
     const a = document.getElementById('setup-a-open').value.trim();
-    data = { type, question: q, hostAnswer: a || null, timeLimit };
+    if (!a) { alert('Enter the correct answer'); return; }
+    data = { type, question: q, hostAnswer: a, timeLimit, maxPoints };
     document.getElementById('setup-q-open').value = '';
     document.getElementById('setup-a-open').value = '';
     document.getElementById('setup-q-open').focus();
+  } else if (type === 'consensus') {
+    const q = document.getElementById('setup-q-consensus').value.trim();
+    if (!q) return;
+    const a = document.getElementById('setup-a-consensus').value.trim();
+    data = { type, question: q, hostAnswer: a || null, timeLimit };
+    document.getElementById('setup-q-consensus').value = '';
+    document.getElementById('setup-a-consensus').value = '';
+    document.getElementById('setup-q-consensus').focus();
   } else if (type === 'choice') {
     const q = document.getElementById('setup-q-choice').value.trim();
     if (!q) return;
@@ -82,7 +116,7 @@ function addPreloadedQuestion() {
     if (!radio) { alert('Mark the correct answer'); return; }
     const ci = parseInt(radio.value);
     if (ci >= opts.length) { alert('Correct answer must be a filled option'); return; }
-    data = { type, question: q, options: opts, correctIndex: ci, timeLimit };
+    data = { type, question: q, options: opts, correctIndex: ci, timeLimit, maxPoints };
     document.getElementById('setup-q-choice').value = '';
     for (let i = 0; i < 4; i++) document.getElementById('setup-opt-' + i).value = '';
     document.getElementById('setup-q-choice').focus();
@@ -90,7 +124,7 @@ function addPreloadedQuestion() {
     const q = document.getElementById('setup-q-tf').value.trim();
     if (!q) return;
     const ci = parseInt(document.querySelector('input[name="correct-tf"]:checked').value);
-    data = { type, question: q, correctIndex: ci, timeLimit };
+    data = { type, question: q, correctIndex: ci, timeLimit, maxPoints };
     document.getElementById('setup-q-tf').value = '';
     document.getElementById('setup-q-tf').focus();
   }
@@ -110,14 +144,16 @@ function renderSetupList() {
     list.innerHTML = '<p class="empty-hint">No questions added yet.</p>';
     return;
   }
-  var icons = { open: '\u270D', choice: '\uD83D\uDD20', truefalse: '\u2705' };
-  var labels = { open: 'Open', choice: 'Choice', truefalse: 'T/F' };
+  var icons = { open: '\u270D', choice: '\uD83D\uDD20', truefalse: '\u2705', consensus: '\uD83E\uDD1D' };
+  var labels = { open: 'Open', choice: 'Choice', truefalse: 'T/F', consensus: 'Consensus' };
   list.innerHTML = preloadedQuestions.map(function(q, i) {
+    var meta = labels[q.type] + ' \u00B7 ' + q.timeLimit + 's';
+    if (q.maxPoints && q.type !== 'consensus') meta += ' \u00B7 ' + q.maxPoints + 'pts';
     return '<div class="setup-item">' +
       '<span class="setup-type-icon">' + (icons[q.type] || '') + '</span>' +
       '<div class="setup-item-content">' +
         '<div class="setup-q">' + escapeHtml(q.question) + '</div>' +
-        '<div class="setup-meta">' + labels[q.type] + ' \u00B7 ' + q.timeLimit + 's</div>' +
+        '<div class="setup-meta">' + meta + '</div>' +
       '</div>' +
       '<button class="btn-remove" onclick="removePreloadedQuestion(' + i + ')">&#10005;</button>' +
     '</div>';
@@ -202,7 +238,7 @@ function joinRoom() {
   });
 }
 
-// ── Submit Answer — open (players only) ──
+// ── Submit Answer — open / consensus (players only) ──
 function submitAnswer() {
   const input = document.getElementById('answer-input');
   const answer = input.value.trim();
@@ -251,8 +287,9 @@ socket.on('host-question-view', function(data) {
   document.getElementById('host-timer-num').textContent = data.timeLimit;
   document.getElementById('host-timer-bar').style.width = '100%';
   document.getElementById('host-answer-count').textContent = 'Waiting for answers...';
+  // Show force-vote button only for consensus (needs voting phase)
   document.getElementById('host-force-vote-btn').style.display =
-    data.type === 'open' ? 'inline-block' : 'none';
+    data.type === 'consensus' ? 'inline-block' : 'none';
 
   showScreen('screen-host-waiting');
 });
@@ -291,6 +328,7 @@ socket.on('new-question', function(data) {
     grid.className = data.type === 'truefalse' ? 'choice-grid tf-grid' : 'choice-grid';
     showScreen('screen-answer-choice');
   } else {
+    // open and consensus both use the text input screen
     document.getElementById('round-badge').textContent = label;
     document.getElementById('answer-question').textContent = data.question;
     document.getElementById('answer-input').value = '';
@@ -352,7 +390,7 @@ socket.on('host-voting-view', function(data) {
   showScreen('screen-host-voting');
 });
 
-// ── Player voting (open) ──
+// ── Player voting (consensus) ──
 socket.on('start-voting', function(data) {
   hasVoted = false;
   document.getElementById('vote-question').textContent = data.question;
@@ -443,12 +481,59 @@ socket.on('choice-results', function(data) {
   }, 3000);
 });
 
+// ── Open-ended auto-graded results (Kahoot-style) ──
+socket.on('open-graded-results', function(data) {
+  choiceResultsScores = data.scores;
+  document.getElementById('cr-question').textContent = data.question;
+
+  var fb = document.getElementById('cr-feedback');
+  if (data.isHost) {
+    fb.innerHTML = '<div class="fb-host">You\'re the host!</div>';
+  } else if (data.myAnswer === null) {
+    fb.innerHTML = '<div class="fb-miss">Time\'s up! No answer</div>';
+  } else if (data.isCorrect) {
+    fb.innerHTML = '<div class="fb-correct">\u2705 Correct!</div>';
+  } else {
+    fb.innerHTML = '<div class="fb-wrong">\u274C Incorrect!</div>';
+  }
+
+  var bd = document.getElementById('cr-breakdown');
+  bd.innerHTML =
+    '<div class="open-graded-info">' +
+      '<div class="og-correct-answer"><span class="og-label">Correct answer:</span> <strong>' + escapeHtml(data.correctAnswer) + '</strong></div>' +
+      (data.myAnswer !== null && !data.isHost ?
+        '<div class="og-your-answer"><span class="og-label">Your answer:</span> <strong>' + escapeHtml(data.myAnswer) + '</strong></div>' : '') +
+    '</div>';
+
+  var pts = document.getElementById('cr-points');
+  if (data.isHost) {
+    pts.innerHTML = '';
+  } else if (data.pointsEarned > 0) {
+    pts.innerHTML = '<div class="pts-value">+' + data.pointsEarned + '</div>';
+  } else {
+    pts.innerHTML = '<div class="pts-zero">+0</div>';
+  }
+
+  document.getElementById('cr-continue-btn').style.display = 'none';
+  document.getElementById('cr-waiting').style.display = 'none';
+
+  showScreen('screen-choice-results');
+
+  setTimeout(function() {
+    if (isAdmin) {
+      document.getElementById('cr-continue-btn').style.display = 'inline-block';
+    } else {
+      document.getElementById('cr-waiting').style.display = 'block';
+    }
+  }, 3000);
+});
+
 function showChoiceLeaderboard() {
   if (!choiceResultsScores) return;
   showLeaderboard(choiceResultsScores, 'next-round');
 }
 
-// ── Open results ──
+// ── Consensus / open results (vote-based) ──
 socket.on('show-results', function(data) {
   pendingResultsData = data;
   showLeaderboard(data.scores, 'open-results');
@@ -603,9 +688,13 @@ socket.on('game-over', function(data) {
   gs.innerHTML = data.history.map(function(round) {
     var rows = round.playerResults.map(function(pr) {
       var icon, detail;
-      if (round.type === 'open') {
+      if (round.type === 'consensus') {
         icon = pr.votes > 0 ? '\u2B50' : '\u2014';
         detail = pr.votes > 0 ? pr.votes + ' vote' + (pr.votes !== 1 ? 's' : '') : (pr.answered ? 'no votes' : 'no answer');
+        if (pr.votedForHost) detail += ' \u00B7 +1 bonus';
+      } else if (round.type === 'open') {
+        icon = pr.correct ? '\u2705' : (pr.answered ? '\u274C' : '\u23F0');
+        detail = pr.correct ? 'Correct' : (pr.answered ? 'Wrong' : 'No answer');
       } else {
         icon = pr.correct ? '\u2705' : (pr.answered ? '\u274C' : '\u23F0');
         detail = pr.correct ? 'Correct' : (pr.answered ? 'Wrong' : 'No answer');
@@ -618,7 +707,8 @@ socket.on('game-over', function(data) {
       '</div>';
     }).join('');
 
-    var typeLabel = round.type === 'open' ? 'Open' : (round.type === 'truefalse' ? 'T/F' : 'Choice');
+    var typeLabels = { open: 'Open', choice: 'Choice', truefalse: 'T/F', consensus: 'Consensus' };
+    var typeLabel = typeLabels[round.type] || round.type;
     return '<div class="gs-round">' +
       '<div class="gs-header">' +
         '<span class="gs-round-num">Q' + round.round + '</span>' +
@@ -713,6 +803,12 @@ document.getElementById('setup-q-open').addEventListener('keydown', function(e) 
   if (e.key === 'Enter') { e.preventDefault(); document.getElementById('setup-a-open').focus(); }
 });
 document.getElementById('setup-a-open').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); addPreloadedQuestion(); }
+});
+document.getElementById('setup-q-consensus').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('setup-a-consensus').focus(); }
+});
+document.getElementById('setup-a-consensus').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') { e.preventDefault(); addPreloadedQuestion(); }
 });
 document.getElementById('setup-q-tf').addEventListener('keydown', function(e) {

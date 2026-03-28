@@ -27,6 +27,10 @@ function playerData(p) {
   return { name: p.name, score: p.score, avatar: p.avatar };
 }
 
+function normalizeAnswer(answer) {
+  return answer.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 io.on('connection', (socket) => {
   console.log('Connected:', socket.id);
 
@@ -142,16 +146,16 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── Admin force-starts voting (open only) ──
+  // ── Admin force-starts voting (consensus only) ──
   socket.on('force-voting', () => {
     const room = rooms[socket.roomCode];
     if (!room || room.admin.id !== socket.id) return;
-    if (room.phase === 'answering' && room.currentQuestion.type === 'open') {
+    if (room.phase === 'answering' && room.currentQuestion.type === 'consensus') {
       clearTimer(socket.roomCode);
       if (Object.keys(room.answers).length >= 2) {
         startVoting(socket.roomCode);
       } else {
-        showOpenResults(socket.roomCode);
+        showConsensusResults(socket.roomCode);
       }
     }
   });
@@ -169,7 +173,7 @@ io.on('connection', (socket) => {
     io.to(socket.roomCode).emit('vote-count', { voted: votesIn, total: eligibleVoters.length });
 
     if (votesIn >= eligibleVoters.length) {
-      showOpenResults(socket.roomCode);
+      showConsensusResults(socket.roomCode);
     }
   });
 
@@ -178,7 +182,7 @@ io.on('connection', (socket) => {
     const room = rooms[socket.roomCode];
     if (!room || room.admin.id !== socket.id) return;
     if (room.phase === 'voting') {
-      showOpenResults(socket.roomCode);
+      showConsensusResults(socket.roomCode);
     }
   });
 
@@ -262,11 +266,15 @@ function handleAllAnswered(code) {
   const qType = room.currentQuestion.type;
   if (qType === 'choice' || qType === 'truefalse') {
     showChoiceResults(code);
-  } else {
+  } else if (qType === 'open') {
+    // Kahoot-style: auto-grade against correct answer
+    showOpenGradedResults(code);
+  } else if (qType === 'consensus') {
+    // Voting-based: players vote for best answer
     if (Object.keys(room.answers).length >= 2) {
       startVoting(code);
     } else {
-      showOpenResults(code);
+      showConsensusResults(code);
     }
   }
 }
@@ -311,6 +319,7 @@ function showChoiceResults(code) {
 
   const correctIndex = room.currentQuestion.correctIndex;
   const timeLimit = room.currentQuestion.timeLimit || 30;
+  const maxPoints = room.currentQuestion.maxPoints || 1000;
   const options =
     room.currentQuestion.type === 'truefalse'
       ? ['True', 'False']
@@ -327,7 +336,7 @@ function showChoiceResults(code) {
     let points = 0;
     if (isCorrect) {
       const timeFraction = Math.max(0, 1 - data.elapsed / timeLimit);
-      points = Math.round(500 + 500 * timeFraction);
+      points = Math.round(maxPoints * (0.5 + 0.5 * timeFraction));
     }
     const player = room.players.find(p => p.id === id);
     if (player) player.score += points;
@@ -338,6 +347,7 @@ function showChoiceResults(code) {
     round: room.round,
     question: room.currentQuestion.question,
     type: room.currentQuestion.type,
+    maxPoints,
     playerResults: room.players
       .map(p => {
         const ans = room.answers[p.id];
@@ -357,7 +367,7 @@ function showChoiceResults(code) {
     const isCorrect = myChoice === correctIndex;
     const timeFraction =
       myAnswer ? Math.max(0, 1 - myAnswer.elapsed / timeLimit) : 0;
-    const pointsEarned = isCorrect ? Math.round(500 + 500 * timeFraction) : 0;
+    const pointsEarned = isCorrect ? Math.round(maxPoints * (0.5 + 0.5 * timeFraction)) : 0;
 
     io.to(player.id).emit('choice-results', {
       question: room.currentQuestion.question,
@@ -384,7 +394,76 @@ function showChoiceResults(code) {
   });
 }
 
-function showOpenResults(code) {
+// ── Open-ended: Kahoot-style auto-grading ──
+function showOpenGradedResults(code) {
+  const room = rooms[code];
+  room.phase = 'results';
+
+  const correctAnswer = room.currentQuestion.hostAnswer || '';
+  const timeLimit = room.currentQuestion.timeLimit || 30;
+  const maxPoints = room.currentQuestion.maxPoints || 1000;
+
+  // Grade each player
+  for (const [id, data] of Object.entries(room.answers)) {
+    const isCorrect = normalizeAnswer(data.answer) === normalizeAnswer(correctAnswer);
+    let points = 0;
+    if (isCorrect) {
+      const timeFraction = Math.max(0, 1 - data.elapsed / timeLimit);
+      points = Math.round(maxPoints * (0.5 + 0.5 * timeFraction));
+    }
+    const player = room.players.find(p => p.id === id);
+    if (player) player.score += points;
+  }
+
+  // Record history
+  room.gameHistory.push({
+    round: room.round,
+    question: room.currentQuestion.question,
+    type: 'open',
+    correctAnswer,
+    maxPoints,
+    playerResults: room.players.map(p => {
+      const ans = room.answers[p.id];
+      const correct = ans ? normalizeAnswer(ans.answer) === normalizeAnswer(correctAnswer) : false;
+      return { name: p.name, avatar: p.avatar, correct, answered: !!ans };
+    }),
+  });
+
+  const scores = room.players
+    .map(p => ({ name: p.name, avatar: p.avatar, score: p.score }))
+    .sort((a, b) => b.score - a.score);
+
+  // Send personalized results to each player
+  for (const player of room.players) {
+    const myAnswer = room.answers[player.id];
+    const isCorrect = myAnswer ? normalizeAnswer(myAnswer.answer) === normalizeAnswer(correctAnswer) : false;
+    const timeFraction = myAnswer ? Math.max(0, 1 - myAnswer.elapsed / timeLimit) : 0;
+    const pointsEarned = isCorrect ? Math.round(maxPoints * (0.5 + 0.5 * timeFraction)) : 0;
+
+    io.to(player.id).emit('open-graded-results', {
+      question: room.currentQuestion.question,
+      correctAnswer,
+      myAnswer: myAnswer ? myAnswer.answer : null,
+      isCorrect,
+      pointsEarned,
+      scores,
+    });
+  }
+
+  // Host spectator view
+  io.to(room.admin.id).emit('open-graded-results', {
+    question: room.currentQuestion.question,
+    correctAnswer,
+    myAnswer: null,
+    isCorrect: null,
+    pointsEarned: 0,
+    scores,
+    isHost: true,
+  });
+}
+
+// ── Consensus: vote-based scoring ──
+function showConsensusResults(code) {
   const room = rooms[code];
   room.phase = 'results';
 
@@ -406,7 +485,7 @@ function showOpenResults(code) {
       };
     });
 
-  // Include host's pre-loaded answer in results if it was used
+  // Include host's pre-loaded answer in results
   if (room.currentQuestion.hostAnswer) {
     results.push({
       id: '__host__',
@@ -419,21 +498,31 @@ function showOpenResults(code) {
 
   results.sort((a, b) => b.votes - a.votes);
 
+  // Score: 2 points per vote received on your answer
   for (const r of results) {
     if (r.id === '__host__') continue; // host doesn't earn score
     const player = room.players.find(p => p.id === r.id);
-    if (player) player.score += r.votes * 100;
+    if (player) player.score += r.votes * 2;
+  }
+
+  // Score: 1 point if you voted for the host's answer
+  for (const [voterId, votedForId] of Object.entries(room.votes)) {
+    if (votedForId === '__host__') {
+      const player = room.players.find(p => p.id === voterId);
+      if (player) player.score += 1;
+    }
   }
 
   // Record history
   room.gameHistory.push({
     round: room.round,
     question: room.currentQuestion.question,
-    type: 'open',
+    type: 'consensus',
     playerResults: room.players
       .map(p => {
         const votes = voteCounts[p.id] || 0;
-        return { name: p.name, avatar: p.avatar, votes, answered: !!room.answers[p.id] };
+        const votedForHost = room.votes[p.id] === '__host__';
+        return { name: p.name, avatar: p.avatar, votes, answered: !!room.answers[p.id], votedForHost };
       }),
   });
 

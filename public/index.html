@@ -60,11 +60,19 @@
           <button class="type-tab active" onclick="selectQuestionType('open', this)">Open Ended</button>
           <button class="type-tab" onclick="selectQuestionType('choice', this)">Multiple Choice</button>
           <button class="type-tab" onclick="selectQuestionType('truefalse', this)">True / False</button>
+          <button class="type-tab" onclick="selectQuestionType('consensus', this)">Consensus</button>
         </div>
 
         <div id="fields-open" class="setup-fields">
           <input type="text" id="setup-q-open" placeholder="Question..." maxlength="200" autocomplete="off">
-          <input type="text" id="setup-a-open" placeholder="Your answer (optional)..." maxlength="150" autocomplete="off">
+          <input type="text" id="setup-a-open" placeholder="Correct answer..." maxlength="150" autocomplete="off">
+          <p class="field-hint">Players must type this answer to score points</p>
+        </div>
+
+        <div id="fields-consensus" class="setup-fields" style="display:none">
+          <input type="text" id="setup-q-consensus" placeholder="Question / Topic..." maxlength="200" autocomplete="off">
+          <input type="text" id="setup-a-consensus" placeholder="Your answer (optional)..." maxlength="150" autocomplete="off">
+          <p class="field-hint">Players submit answers, then vote for the most convincing one</p>
         </div>
 
         <div id="fields-choice" class="setup-fields" style="display:none">
@@ -105,12 +113,22 @@
 
         <div class="time-selector">
           <span class="time-label">Time limit:</span>
-          <div class="time-pills">
+          <div id="time-pills" class="time-pills">
             <label class="time-pill"><input type="radio" name="time-limit" value="10"><span>10s</span></label>
             <label class="time-pill"><input type="radio" name="time-limit" value="20"><span>20s</span></label>
             <label class="time-pill"><input type="radio" name="time-limit" value="30" checked><span>30s</span></label>
             <label class="time-pill"><input type="radio" name="time-limit" value="45"><span>45s</span></label>
             <label class="time-pill"><input type="radio" name="time-limit" value="60"><span>60s</span></label>
+          </div>
+        </div>
+
+        <div id="points-selector" class="time-selector">
+          <span class="time-label">Max points:</span>
+          <div class="time-pills">
+            <label class="time-pill"><input type="radio" name="max-points" value="100"><span>100</span></label>
+            <label class="time-pill"><input type="radio" name="max-points" value="500"><span>500</span></label>
+            <label class="time-pill"><input type="radio" name="max-points" value="1000" checked><span>1000</span></label>
+            <label class="time-pill"><input type="radio" name="max-points" value="2000"><span>2000</span></label>
           </div>
         </div>
 
