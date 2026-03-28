@@ -208,6 +208,53 @@ h2 {
   margin-top: 6px;
 }
 
+.join-link-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  width: 100%;
+}
+
+.join-link-section .label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 8px;
+  display: block;
+  text-align: center;
+}
+
+.link-container {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.join-link-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  word-break: break-all;
+}
+
+.join-link-input:focus {
+  outline: none;
+  border-color: #ffd200;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.btn-small {
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 /* ── Player list / chips ── */
 
 .player-list {

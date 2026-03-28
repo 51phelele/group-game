@@ -42,6 +42,9 @@ function pickAvatar(btn, containerId) {
 renderAvatarPicker('create-avatar-picker');
 renderAvatarPicker('join-avatar-picker');
 
+// Handle URL params for join links
+handleUrlParams();
+
 // ── Setup — question type tabs ──
 function selectQuestionType(type, btn) {
   selectedSetupType = type;
@@ -145,12 +148,40 @@ function goToLobby() {
   document.getElementById('lobby-code').textContent = roomCode;
   document.getElementById('admin-controls').style.display = 'block';
   document.getElementById('queue-count').textContent = preloadedQuestions.length;
+  setJoinLink(roomCode);
   showScreen('screen-lobby');
   generateQR('lobby-qr', roomCode);
 }
 
 function startNextQuestion() {
   socket.emit('start-question');
+}
+
+// ── Join Link Handling ──
+function generateJoinLink(code) {
+  const baseUrl = window.location.origin + window.location.pathname;
+  return baseUrl + '?code=' + encodeURIComponent(code);
+}
+
+function setJoinLink(code) {
+  const link = generateJoinLink(code);
+  document.getElementById('join-link').value = link;
+}
+
+function copyJoinLink() {
+  const linkInput = document.getElementById('join-link');
+  linkInput.select();
+  document.execCommand('copy');
+  alert('Join link copied to clipboard!');
+}
+
+function handleUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (code) {
+    document.getElementById('join-code').value = code.toUpperCase();
+    showScreen('screen-join');
+  }
 }
 
 // ── Join Room ──

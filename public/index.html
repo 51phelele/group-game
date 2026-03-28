@@ -132,6 +132,13 @@
           <span class="code" id="lobby-code"></span>
           <div id="lobby-qr" class="qr-container"></div>
           <span class="qr-hint">Scan to join</span>
+          <div class="join-link-section">
+            <p class="label">Or share this link:</p>
+            <div class="link-container">
+              <input type="text" id="join-link" readonly class="join-link-input">
+              <button class="btn btn-small" onclick="copyJoinLink()">Copy</button>
+            </div>
+          </div>
         </div>
         <h2>Players</h2>
         <div id="player-list" class="player-list"></div>
