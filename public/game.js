@@ -546,6 +546,7 @@ socket.on('back-to-lobby', function(data) {
   renderPlayerList('waiting-player-list', data.players);
   if (isAdmin) {
     document.getElementById('queue-count').textContent = data.questionsRemaining;
+    document.getElementById('btn-start-next').textContent = 'Next Question';
     showScreen('screen-lobby');
   } else {
     showScreen('screen-waiting');

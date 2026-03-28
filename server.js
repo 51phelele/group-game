@@ -278,6 +278,11 @@ function startVoting(code) {
   const answerList = Object.entries(room.answers)
     .map(([id, data]) => ({ id, answer: data.answer }));
 
+  // Include the host's pre-loaded answer so players can vote for it
+  if (room.currentQuestion.hostAnswer) {
+    answerList.push({ id: '__host__', answer: room.currentQuestion.hostAnswer });
+  }
+
   // Shuffle
   for (let i = answerList.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -401,9 +406,21 @@ function showOpenResults(code) {
       };
     });
 
+  // Include host's pre-loaded answer in results if it was used
+  if (room.currentQuestion.hostAnswer) {
+    results.push({
+      id: '__host__',
+      name: room.admin.name,
+      avatar: room.admin.avatar,
+      answer: room.currentQuestion.hostAnswer,
+      votes: voteCounts['__host__'] || 0,
+    });
+  }
+
   results.sort((a, b) => b.votes - a.votes);
 
   for (const r of results) {
+    if (r.id === '__host__') continue; // host doesn't earn score
     const player = room.players.find(p => p.id === r.id);
     if (player) player.score += r.votes * 100;
   }

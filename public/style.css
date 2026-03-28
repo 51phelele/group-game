@@ -274,6 +274,15 @@ h2 {
 
 /* ── Voting ── */
 
+.vote-prompt {
+  text-align: center;
+  color: #ffd700;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
 .vote-options {
   display: flex;
   flex-direction: column;
