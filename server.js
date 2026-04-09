@@ -8,6 +8,81 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
+
+// ── AI Quiz Generation ──
+app.post('/api/generate-quiz', async (req, res) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return res.status(400).json({ error: 'AI not configured. Ask the host to set the ANTHROPIC_API_KEY environment variable on the server.' });
+  }
+
+  const { theme, count } = req.body;
+  if (!theme || !count) {
+    return res.status(400).json({ error: 'Theme and question count are required.' });
+  }
+
+  const prompt = `Generate a fun party quiz with exactly ${count} questions about "${theme}".
+
+Return ONLY a JSON array. Use a mix of these types:
+
+1. "open" — player types the answer, auto-graded:
+   {"type":"open","question":"...","hostAnswer":"correct answer","timeLimit":30,"maxPoints":1000}
+
+2. "choice" — pick from 4 options:
+   {"type":"choice","question":"...","options":["A","B","C","D"],"correctIndex":0,"timeLimit":30,"maxPoints":1000}
+
+3. "truefalse" — true or false:
+   {"type":"truefalse","question":"statement...","correctIndex":0,"timeLimit":20,"maxPoints":1000}
+   (correctIndex 0 = True, 1 = False)
+
+4. "consensus" — opinion/debate, players vote for best answer:
+   {"type":"consensus","question":"fun opinion question about ${theme}?","hostAnswer":"a witty answer","timeLimit":90}
+
+Rules:
+- Include at least one of each type if count >= 4, otherwise mix freely
+- Make questions fun, varied in difficulty, and engaging for a group
+- For consensus questions, make them opinion-based or debatable
+- Return ONLY the raw JSON array, no markdown, no explanation`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error('Anthropic API error:', response.status, errBody);
+      return res.status(500).json({ error: 'AI service error. Check your API key.' });
+    }
+
+    const data = await response.json();
+    const text = data.content[0].text.trim();
+
+    // Extract JSON array from response (handle potential markdown wrapping)
+    let jsonStr = text;
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) jsonStr = jsonMatch[0];
+
+    const questions = JSON.parse(jsonStr);
+    if (!Array.isArray(questions)) throw new Error('Not an array');
+
+    res.json({ questions });
+  } catch (err) {
+    console.error('AI generation error:', err.message);
+    res.status(500).json({ error: 'Failed to generate quiz. Try again.' });
+  }
+});
 
 const rooms = {};
 

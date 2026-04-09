@@ -15,6 +15,7 @@ let currentQuestionType = 'open';
 let pendingResultsData = null;
 let choiceResultsScores = null;
 let leaderboardMode = null;
+let quickStartQuiz = null;
 
 socket.on('connect', () => { mySocketId = socket.id; });
 
@@ -195,6 +196,7 @@ function saveCurrentQuiz() {
   saveSavedQuizzes(quizzes);
   nameInput.value = '';
   renderSavedQuizzes();
+  renderHomeSavedQuizzes();
   alert('Quiz "' + name + '" saved!');
 }
 
@@ -220,6 +222,7 @@ function deleteSavedQuiz(index) {
   quizzes.splice(index, 1);
   saveSavedQuizzes(quizzes);
   renderSavedQuizzes();
+  renderHomeSavedQuizzes();
 }
 
 function renderSavedQuizzes() {
@@ -260,6 +263,104 @@ function renderSavedQuizzes() {
 
 // Init saved quizzes on page load
 renderSavedQuizzes();
+renderHomeSavedQuizzes();
+
+// ── Home page — saved quizzes ──
+function renderHomeSavedQuizzes() {
+  var quizzes = getSavedQuizzes();
+  var section = document.getElementById('home-saved-section');
+  var list = document.getElementById('home-saved-list');
+
+  if (quizzes.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  var typeLabels = { open: 'Open', choice: 'Choice', truefalse: 'T/F', consensus: 'Consensus' };
+
+  list.innerHTML = quizzes.map(function(quiz, i) {
+    var counts = {};
+    quiz.questions.forEach(function(q) { counts[q.type] = (counts[q.type] || 0) + 1; });
+    var summary = Object.entries(counts).map(function(e) {
+      return e[1] + ' ' + (typeLabels[e[0]] || e[0]);
+    }).join(', ');
+
+    return '<div class="home-quiz-card">' +
+      '<div class="hq-info">' +
+        '<div class="hq-name">' + escapeHtml(quiz.name) + '</div>' +
+        '<div class="hq-meta">' + quiz.questions.length + ' questions \u00B7 ' + summary + '</div>' +
+      '</div>' +
+      '<button class="btn btn-primary btn-small" onclick="quickPlay(' + i + ')">Play</button>' +
+    '</div>';
+  }).join('');
+}
+
+function quickPlay(index) {
+  var quizzes = getSavedQuizzes();
+  quickStartQuiz = quizzes[index];
+  showScreen('screen-create');
+}
+
+// ── AI Quiz Generation ──
+function toggleAiSection() {
+  var body = document.getElementById('ai-body');
+  var arrow = document.getElementById('ai-toggle-arrow');
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    arrow.innerHTML = '&#x25B2;';
+  } else {
+    body.style.display = 'none';
+    arrow.innerHTML = '&#x25BC;';
+  }
+}
+
+function generateAiQuiz() {
+  var theme = document.getElementById('ai-theme').value.trim();
+  if (!theme) { alert('Enter a theme for the quiz'); return; }
+
+  var countRadio = document.querySelector('input[name="ai-count"]:checked');
+  var count = countRadio ? parseInt(countRadio.value) : 5;
+
+  var btn = document.getElementById('ai-generate-btn');
+  var status = document.getElementById('ai-status');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  status.textContent = 'AI is creating your quiz...';
+  status.className = 'ai-status';
+
+  fetch('/api/generate-quiz', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ theme: theme, count: count }),
+  })
+  .then(function(res) { return res.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.textContent = 'Generate Quiz';
+
+    if (data.error) {
+      status.textContent = data.error;
+      status.className = 'ai-status ai-error';
+      return;
+    }
+
+    if (data.questions && data.questions.length > 0) {
+      preloadedQuestions = preloadedQuestions.concat(data.questions);
+      renderSetupList();
+      renderSavedQuizzes();
+      status.textContent = data.questions.length + ' questions added!';
+      status.className = 'ai-status ai-success';
+      document.getElementById('ai-theme').value = '';
+    }
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    btn.textContent = 'Generate Quiz';
+    status.textContent = 'Failed to generate. Try again.';
+    status.className = 'ai-status ai-error';
+  });
+}
 
 // ── Create Room ──
 function createRoom() {
@@ -269,8 +370,23 @@ function createRoom() {
     if (res.success) {
       isAdmin = true;
       roomCode = res.code;
-      document.getElementById('setup-room-code').textContent = res.code;
-      showScreen('screen-setup');
+
+      if (quickStartQuiz) {
+        // Quick start: load saved quiz and go straight to lobby
+        preloadedQuestions = quickStartQuiz.questions.map(function(q) { return Object.assign({}, q); });
+        socket.emit('load-questions', preloadedQuestions);
+        document.getElementById('lobby-code').textContent = roomCode;
+        document.getElementById('admin-controls').style.display = 'block';
+        document.getElementById('queue-count').textContent = preloadedQuestions.length;
+        document.getElementById('btn-start-next').textContent = 'Start Quiz';
+        setJoinLink(roomCode);
+        showScreen('screen-lobby');
+        generateQR('lobby-qr', roomCode);
+        quickStartQuiz = null;
+      } else {
+        document.getElementById('setup-room-code').textContent = res.code;
+        showScreen('screen-setup');
+      }
     }
   });
 }

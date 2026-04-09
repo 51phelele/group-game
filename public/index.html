@@ -19,6 +19,10 @@
           <button class="btn btn-primary" onclick="showScreen('screen-create')">Create Game</button>
           <button class="btn btn-secondary" onclick="showScreen('screen-join')">Join Game</button>
         </div>
+        <div id="home-saved-section" class="home-saved-section" style="display:none">
+          <h3 class="home-section-title">My Quizzes</h3>
+          <div id="home-saved-list" class="home-saved-list"></div>
+        </div>
       </div>
     </div>
 
@@ -55,6 +59,31 @@
           <h2>Create Your Quiz</h2>
           <div class="setup-code-pill">Room: <span id="setup-room-code"></span></div>
         </div>
+
+        <div class="ai-generate-section">
+          <div class="ai-header" onclick="toggleAiSection()">
+            <span class="ai-icon">&#x2728;</span>
+            <span>Generate with AI</span>
+            <span class="ai-toggle" id="ai-toggle-arrow">&#x25BC;</span>
+          </div>
+          <div id="ai-body" class="ai-body" style="display:none">
+            <input type="text" id="ai-theme" placeholder="Theme (e.g. Pop culture, Science, 90s movies...)" maxlength="100" autocomplete="off">
+            <div class="ai-options-row">
+              <div class="ai-option">
+                <label class="ai-label">Questions</label>
+                <div class="time-pills">
+                  <label class="time-pill"><input type="radio" name="ai-count" value="5" checked><span>5</span></label>
+                  <label class="time-pill"><input type="radio" name="ai-count" value="10"><span>10</span></label>
+                  <label class="time-pill"><input type="radio" name="ai-count" value="15"><span>15</span></label>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-ai" id="ai-generate-btn" onclick="generateAiQuiz()">Generate Quiz</button>
+            <p id="ai-status" class="ai-status"></p>
+          </div>
+        </div>
+
+        <div class="setup-divider"><span>or create manually</span></div>
 
         <div class="type-tabs">
           <button class="type-tab active" onclick="selectQuestionType('open', this)">Open Ended</button>
