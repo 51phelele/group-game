@@ -738,6 +738,79 @@ h2 {
   color: #ff6b6b;
 }
 
+/* ── Saved quizzes ── */
+
+.saved-quizzes-section {
+  margin-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 16px;
+}
+
+.save-quiz-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  align-items: stretch;
+}
+
+.save-quiz-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.saved-quizzes-header h3 {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 10px;
+}
+
+.saved-quizzes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.saved-quiz-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  gap: 10px;
+}
+
+.saved-quiz-info {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.saved-quiz-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.saved-quiz-meta {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 2px;
+}
+
+.saved-quiz-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 /* ═══════════════════════════════
    LOBBY — QUEUE CONTROLS
    ═══════════════════════════════ */

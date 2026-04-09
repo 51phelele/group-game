@@ -142,8 +142,10 @@ function renderSetupList() {
   const list = document.getElementById('preloaded-list');
   if (preloadedQuestions.length === 0) {
     list.innerHTML = '<p class="empty-hint">No questions added yet.</p>';
+    document.getElementById('save-quiz-row').style.display = 'none';
     return;
   }
+  document.getElementById('save-quiz-row').style.display = 'flex';
   var icons = { open: '\u270D', choice: '\uD83D\uDD20', truefalse: '\u2705', consensus: '\uD83E\uDD1D' };
   var labels = { open: 'Open', choice: 'Choice', truefalse: 'T/F', consensus: 'Consensus' };
   list.innerHTML = preloadedQuestions.map(function(q, i) {
@@ -159,6 +161,105 @@ function renderSetupList() {
     '</div>';
   }).join('');
 }
+
+// ── Saved Quizzes ──
+var STORAGE_KEY = 'vibecheck_saved_quizzes';
+
+function getSavedQuizzes() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveSavedQuizzes(quizzes) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(quizzes));
+}
+
+function saveCurrentQuiz() {
+  var nameInput = document.getElementById('save-quiz-name');
+  var name = nameInput.value.trim();
+  if (!name) { alert('Enter a name for this quiz'); return; }
+  if (preloadedQuestions.length === 0) { alert('Add questions first'); return; }
+
+  var quizzes = getSavedQuizzes();
+  var existing = quizzes.findIndex(function(q) { return q.name === name; });
+  if (existing >= 0) {
+    if (!confirm('A quiz named "' + name + '" already exists. Overwrite it?')) return;
+    quizzes[existing] = { name: name, questions: preloadedQuestions, savedAt: new Date().toISOString() };
+  } else {
+    quizzes.push({ name: name, questions: preloadedQuestions, savedAt: new Date().toISOString() });
+  }
+
+  saveSavedQuizzes(quizzes);
+  nameInput.value = '';
+  renderSavedQuizzes();
+  alert('Quiz "' + name + '" saved!');
+}
+
+function loadSavedQuiz(index) {
+  var quizzes = getSavedQuizzes();
+  var quiz = quizzes[index];
+  if (!quiz) return;
+
+  if (preloadedQuestions.length > 0) {
+    if (!confirm('This will replace your current questions. Continue?')) return;
+  }
+
+  preloadedQuestions = quiz.questions.map(function(q) { return Object.assign({}, q); });
+  renderSetupList();
+  renderSavedQuizzes();
+}
+
+function deleteSavedQuiz(index) {
+  var quizzes = getSavedQuizzes();
+  var quiz = quizzes[index];
+  if (!quiz) return;
+  if (!confirm('Delete "' + quiz.name + '"?')) return;
+  quizzes.splice(index, 1);
+  saveSavedQuizzes(quizzes);
+  renderSavedQuizzes();
+}
+
+function renderSavedQuizzes() {
+  var quizzes = getSavedQuizzes();
+  var container = document.getElementById('saved-quizzes-list');
+  var header = document.getElementById('saved-header');
+
+  if (quizzes.length === 0) {
+    header.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+
+  header.style.display = 'block';
+  var typeLabels = { open: 'Open', choice: 'Choice', truefalse: 'T/F', consensus: 'Consensus' };
+
+  container.innerHTML = quizzes.map(function(quiz, i) {
+    var counts = {};
+    quiz.questions.forEach(function(q) {
+      counts[q.type] = (counts[q.type] || 0) + 1;
+    });
+    var summary = Object.entries(counts).map(function(e) {
+      return e[1] + ' ' + (typeLabels[e[0]] || e[0]);
+    }).join(', ');
+
+    return '<div class="saved-quiz-item">' +
+      '<div class="saved-quiz-info">' +
+        '<div class="saved-quiz-name">' + escapeHtml(quiz.name) + '</div>' +
+        '<div class="saved-quiz-meta">' + quiz.questions.length + ' questions \u00B7 ' + summary + '</div>' +
+      '</div>' +
+      '<div class="saved-quiz-actions">' +
+        '<button class="btn btn-small btn-primary" onclick="loadSavedQuiz(' + i + ')">Load</button>' +
+        '<button class="btn-remove" onclick="deleteSavedQuiz(' + i + ')">\u2715</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// Init saved quizzes on page load
+renderSavedQuizzes();
 
 // ── Create Room ──
 function createRoom() {

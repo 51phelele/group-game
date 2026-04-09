@@ -138,6 +138,17 @@
           <p class="empty-hint">No questions added yet.</p>
         </div>
 
+        <div class="saved-quizzes-section">
+          <div class="save-quiz-row" id="save-quiz-row" style="display:none">
+            <input type="text" id="save-quiz-name" placeholder="Quiz name..." maxlength="40" autocomplete="off">
+            <button class="btn btn-secondary btn-small" onclick="saveCurrentQuiz()">Save Quiz</button>
+          </div>
+          <div class="saved-quizzes-header" id="saved-header" style="display:none">
+            <h3>Saved Quizzes</h3>
+          </div>
+          <div id="saved-quizzes-list" class="saved-quizzes-list"></div>
+        </div>
+
         <button class="btn btn-primary" onclick="goToLobby()">Open Lobby &rarr;</button>
       </div>
     </div>
