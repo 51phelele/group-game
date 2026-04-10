@@ -126,6 +126,18 @@ body {
   margin-top: 2px;
 }
 
+.hq-badge {
+  font-size: 0.65rem;
+  background: rgba(247, 151, 30, 0.2);
+  color: #ffd200;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+}
+
 /* ── Buttons ── */
 
 .btn {
@@ -1444,6 +1456,59 @@ h2 {
   color: rgba(255, 255, 255, 0.5);
   font-weight: 700;
   margin-bottom: 12px;
+}
+
+.host-answers-display {
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.ha-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.ha-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+}
+
+.ha-card.ha-host {
+  border-color: rgba(247, 151, 30, 0.3);
+  background: rgba(247, 151, 30, 0.08);
+}
+
+.ha-avatar {
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.ha-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ha-name {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 700;
+}
+
+.ha-answer {
+  font-size: 0.95rem;
+  font-weight: 600;
+  word-break: break-word;
 }
 
 /* ═══════════════════════════════

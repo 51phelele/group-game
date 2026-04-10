@@ -1,4 +1,10 @@
-const socket = io();
+const socket = io({
+  reconnection: true,
+  reconnectionAttempts: 20,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  timeout: 10000,
+});
 
 const AVATARS = ['🦊','🐸','🦄','🐙','👻','🤖','🎃','🦖','🐷','🦋','🍕','🌮','🧁','🎸','🚀','🌈'];
 
@@ -17,7 +23,33 @@ let choiceResultsScores = null;
 let leaderboardMode = null;
 let quickStartQuiz = null;
 
-socket.on('connect', () => { mySocketId = socket.id; });
+socket.on('connect', () => {
+  mySocketId = socket.id;
+  // Auto-reconnect if we were in a game
+  var savedRoom = sessionStorage.getItem('vc_room');
+  var savedName = sessionStorage.getItem('vc_name');
+  var savedAvatar = sessionStorage.getItem('vc_avatar');
+  if (savedRoom && savedName && !isAdmin) {
+    socket.emit('join-room', {
+      code: savedRoom,
+      name: savedName,
+      avatar: savedAvatar || AVATARS[0]
+    }, function(res) {
+      if (res.success) {
+        roomCode = savedRoom;
+        document.getElementById('waiting-code').textContent = savedRoom;
+        if (!res.reconnected) {
+          showScreen('screen-waiting');
+        }
+      } else {
+        // Room gone or can't rejoin — clear saved state
+        sessionStorage.removeItem('vc_room');
+        sessionStorage.removeItem('vc_name');
+        sessionStorage.removeItem('vc_avatar');
+      }
+    });
+  }
+});
 
 // ── Screen management ──
 function showScreen(id) {
@@ -166,12 +198,63 @@ function renderSetupList() {
 // ── Saved Quizzes ──
 var STORAGE_KEY = 'vibecheck_saved_quizzes';
 
+var DEFAULT_TEMPLATES = [
+  {
+    name: 'General Knowledge',
+    questions: [
+      { type: 'choice', question: 'Which planet is known as the Red Planet?', options: ['Venus', 'Mars', 'Jupiter', 'Saturn'], correctIndex: 1, timeLimit: 20, maxPoints: 1000 },
+      { type: 'truefalse', question: 'The Great Wall of China is visible from space with the naked eye.', correctIndex: 1, timeLimit: 15, maxPoints: 1000 },
+      { type: 'choice', question: 'What is the chemical symbol for gold?', options: ['Go', 'Gd', 'Au', 'Ag'], correctIndex: 2, timeLimit: 20, maxPoints: 1000 },
+      { type: 'truefalse', question: 'Octopuses have three hearts.', correctIndex: 0, timeLimit: 15, maxPoints: 1000 },
+      { type: 'choice', question: 'Which country has the most time zones?', options: ['Russia', 'USA', 'France', 'China'], correctIndex: 2, timeLimit: 30, maxPoints: 1000 },
+      { type: 'open', question: 'What is the largest ocean on Earth?', hostAnswer: 'Pacific', timeLimit: 20, maxPoints: 1000 },
+      { type: 'consensus', question: 'What is the most overrated tourist destination?', hostAnswer: 'Times Square', timeLimit: 60 },
+    ]
+  },
+  {
+    name: 'Pop Culture',
+    questions: [
+      { type: 'choice', question: 'Who played Iron Man in the MCU?', options: ['Chris Evans', 'Robert Downey Jr', 'Chris Hemsworth', 'Mark Ruffalo'], correctIndex: 1, timeLimit: 20, maxPoints: 1000 },
+      { type: 'truefalse', question: 'The TV show "Friends" originally aired in the 1990s.', correctIndex: 0, timeLimit: 15, maxPoints: 1000 },
+      { type: 'choice', question: 'Which artist released the album "Thriller"?', options: ['Prince', 'Michael Jackson', 'Whitney Houston', 'Madonna'], correctIndex: 1, timeLimit: 20, maxPoints: 1000 },
+      { type: 'open', question: 'What is the name of the fictional country in Black Panther?', hostAnswer: 'Wakanda', timeLimit: 20, maxPoints: 1000 },
+      { type: 'truefalse', question: 'Taylor Swift started her career as a country music artist.', correctIndex: 0, timeLimit: 15, maxPoints: 1000 },
+      { type: 'choice', question: 'Which streaming platform produced "Squid Game"?', options: ['Amazon Prime', 'Disney+', 'Netflix', 'HBO Max'], correctIndex: 2, timeLimit: 20, maxPoints: 1000 },
+      { type: 'consensus', question: 'Who is the greatest musician of all time?', hostAnswer: 'Freddie Mercury', timeLimit: 60 },
+    ]
+  },
+  {
+    name: 'Fun Icebreaker',
+    questions: [
+      { type: 'consensus', question: 'What is the best pizza topping?', hostAnswer: 'Pepperoni', timeLimit: 60 },
+      { type: 'truefalse', question: 'Bananas are technically berries.', correctIndex: 0, timeLimit: 15, maxPoints: 500 },
+      { type: 'consensus', question: 'If you could have dinner with anyone, dead or alive, who would it be?', hostAnswer: 'Nelson Mandela', timeLimit: 90 },
+      { type: 'choice', question: 'Which of these is NOT a real phobia?', options: ['Arachibutyrophobia (peanut butter sticking to mouth)', 'Hippopotomonstrosesquippedaliophobia (long words)', 'Chromophobia (colours)', 'Floriography (flowers speaking)'], correctIndex: 3, timeLimit: 30, maxPoints: 500 },
+      { type: 'consensus', question: 'What superpower would be the most useful in everyday life?', hostAnswer: 'Teleportation', timeLimit: 60 },
+      { type: 'truefalse', question: 'Honey never spoils — archaeologists have found 3000-year-old edible honey.', correctIndex: 0, timeLimit: 15, maxPoints: 500 },
+    ]
+  }
+];
+
 function getSavedQuizzes() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-  } catch (e) {
-    return [];
-  }
+    var saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved && saved.length > 0) return saved;
+  } catch (e) {}
+  return [];
+}
+
+function getAllQuizzes() {
+  var saved = getSavedQuizzes();
+  // Merge defaults that aren't already saved (by name)
+  var savedNames = saved.map(function(q) { return q.name; });
+  var all = saved.slice();
+  DEFAULT_TEMPLATES.forEach(function(t) {
+    if (savedNames.indexOf(t.name) === -1) {
+      all.push({ name: t.name, questions: t.questions, isDefault: true });
+    }
+  });
+  return all;
 }
 
 function saveSavedQuizzes(quizzes) {
@@ -267,7 +350,7 @@ renderHomeSavedQuizzes();
 
 // ── Home page — saved quizzes ──
 function renderHomeSavedQuizzes() {
-  var quizzes = getSavedQuizzes();
+  var quizzes = getAllQuizzes();
   var section = document.getElementById('home-saved-section');
   var list = document.getElementById('home-saved-list');
 
@@ -288,7 +371,7 @@ function renderHomeSavedQuizzes() {
 
     return '<div class="home-quiz-card">' +
       '<div class="hq-info">' +
-        '<div class="hq-name">' + escapeHtml(quiz.name) + '</div>' +
+        '<div class="hq-name">' + escapeHtml(quiz.name) + (quiz.isDefault ? ' <span class="hq-badge">Template</span>' : '') + '</div>' +
         '<div class="hq-meta">' + quiz.questions.length + ' questions \u00B7 ' + summary + '</div>' +
       '</div>' +
       '<button class="btn btn-primary btn-small" onclick="quickPlay(' + i + ')">Play</button>' +
@@ -297,7 +380,7 @@ function renderHomeSavedQuizzes() {
 }
 
 function quickPlay(index) {
-  var quizzes = getSavedQuizzes();
+  var quizzes = getAllQuizzes();
   quickStartQuiz = quizzes[index];
   showScreen('screen-create');
 }
@@ -447,7 +530,15 @@ function joinRoom() {
   socket.emit('join-room', { code, name, avatar: selectedAvatar }, function(res) {
     if (res.success) {
       roomCode = code;
+      // Store join info for auto-reconnect
+      sessionStorage.setItem('vc_room', code);
+      sessionStorage.setItem('vc_name', name);
+      sessionStorage.setItem('vc_avatar', selectedAvatar);
       document.getElementById('waiting-code').textContent = code;
+      if (res.reconnected) {
+        // Reconnected — server will send game state
+        return;
+      }
       showScreen('screen-waiting');
     } else {
       err.textContent = res.error;
@@ -604,6 +695,24 @@ socket.on('answer-count', function(data) {
 socket.on('host-voting-view', function(data) {
   document.getElementById('host-vote-question').textContent = data.question;
   document.getElementById('host-vote-count').textContent = '';
+
+  // Show all submitted answers so host can comment
+  var display = document.getElementById('host-answers-display');
+  if (data.answers && data.answers.length > 0) {
+    display.innerHTML = '<p class="ha-title">Submitted Answers:</p>' +
+      data.answers.map(function(a) {
+        return '<div class="ha-card' + (a.isHostAnswer ? ' ha-host' : '') + '">' +
+          '<span class="ha-avatar">' + (a.avatar || '') + '</span>' +
+          '<div class="ha-content">' +
+            '<span class="ha-name">' + escapeHtml(a.name) + (a.isHostAnswer ? ' (you)' : '') + '</span>' +
+            '<span class="ha-answer">' + escapeHtml(a.answer) + '</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+  } else {
+    display.innerHTML = '';
+  }
+
   showScreen('screen-host-voting');
 });
 
@@ -936,11 +1045,21 @@ socket.on('game-over', function(data) {
     '</div>';
   }).join('');
 
+  sessionStorage.removeItem('vc_room');
+  sessionStorage.removeItem('vc_name');
+  sessionStorage.removeItem('vc_avatar');
   showScreen('screen-game-over');
 });
 
 socket.on('room-closed', function() {
+  sessionStorage.removeItem('vc_room');
+  sessionStorage.removeItem('vc_name');
+  sessionStorage.removeItem('vc_avatar');
   showScreen('screen-closed');
+});
+
+socket.on('rejoin-waiting', function() {
+  showScreen('screen-waiting');
 });
 
 // ═══════════════════════════════

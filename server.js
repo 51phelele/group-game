@@ -98,12 +98,46 @@ function getPlayers(room) {
   return room.players.filter(p => p.id !== room.admin.id);
 }
 
+function getActivePlayers(room) {
+  return room.players.filter(p => p.id !== room.admin.id && !p.disconnected);
+}
+
 function playerData(p) {
-  return { name: p.name, score: p.score, avatar: p.avatar };
+  return { name: p.name, score: p.score, avatar: p.avatar, disconnected: !!p.disconnected };
 }
 
 function normalizeAnswer(answer) {
   return answer.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// Send current game state to a reconnecting player
+function sendGameState(socket, room) {
+  if (!room.currentQuestion) return; // in lobby, nothing to send
+
+  const qData = room.currentQuestion;
+  const payload = {
+    type: qData.type,
+    question: qData.question,
+    round: room.round,
+    totalQuestions: room.totalQuestions,
+    timeLimit: qData.timeLimit || 30,
+  };
+  if (qData.type === 'choice') payload.options = qData.options;
+  else if (qData.type === 'truefalse') payload.options = ['True', 'False'];
+
+  if (room.phase === 'answering') {
+    // Send the question so they can still answer
+    io.to(socket.id).emit('new-question', payload);
+  } else if (room.phase === 'voting') {
+    // They missed answering but can see the voting screen
+    io.to(socket.id).emit('host-voting-view', { question: qData.question });
+  } else if (room.phase === 'results' || room.phase === 'lobby') {
+    // Show waiting screen
+    io.to(socket.id).emit('rejoin-waiting', {
+      phase: room.phase,
+      questionsRemaining: room.questionQueue.length,
+    });
+  }
 }
 
 io.on('connection', (socket) => {
@@ -147,10 +181,32 @@ io.on('connection', (socket) => {
     const { code, name, avatar } = data;
     const room = rooms[code];
     if (!room) return callback({ success: false, error: 'Room not found' });
-    if (room.phase !== 'lobby') return callback({ success: false, error: 'Game already in progress' });
-    if (room.players.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+
+    // Check if this player is reconnecting (same name, was disconnected)
+    const existing = room.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      if (existing.disconnected) {
+        // Reconnecting — restore session
+        clearTimeout(existing.disconnectTimer);
+        existing.id = socket.id;
+        existing.avatar = avatar || existing.avatar;
+        existing.disconnected = false;
+        delete existing.disconnectTimer;
+        socket.join(code);
+        socket.roomCode = code;
+        socket.playerName = name;
+        callback({ success: true, reconnected: true, score: existing.score });
+        io.to(code).emit('player-list', getPlayers(room).map(playerData));
+
+        // Send current game state so they can rejoin the active screen
+        sendGameState(socket, room);
+        return;
+      }
       return callback({ success: false, error: 'Name already taken' });
     }
+
+    if (room.phase !== 'lobby') return callback({ success: false, error: 'Game already in progress' });
+
     room.players.push({ id: socket.id, name, avatar: avatar || '🦊', score: 0 });
     socket.join(code);
     socket.roomCode = code;
@@ -190,7 +246,7 @@ io.on('connection', (socket) => {
 
     // Send host the spectator view, players the question
     io.to(room.admin.id).emit('host-question-view', payload);
-    for (const p of getPlayers(room)) {
+    for (const p of getActivePlayers(room)) {
       io.to(p.id).emit('new-question', payload);
     }
 
@@ -212,7 +268,7 @@ io.on('connection', (socket) => {
     };
 
     const answered = Object.keys(room.answers).length;
-    const total = getPlayers(room).length;
+    const total = getActivePlayers(room).length;
     io.to(socket.roomCode).emit('answer-count', { answered, total });
 
     if (answered >= total) {
@@ -288,16 +344,33 @@ io.on('connection', (socket) => {
 
   // ── Disconnect ──
   socket.on('disconnect', () => {
-    const room = rooms[socket.roomCode];
+    const code = socket.roomCode;
+    const room = rooms[code];
     if (!room) return;
-    room.players = room.players.filter(p => p.id !== socket.id);
+
     if (room.admin.id === socket.id) {
-      clearTimer(socket.roomCode);
-      io.to(socket.roomCode).emit('room-closed');
-      delete rooms[socket.roomCode];
-    } else {
-      io.to(socket.roomCode).emit('player-list', room.players.map(playerData));
+      clearTimer(code);
+      io.to(code).emit('room-closed');
+      // Clear all disconnect timers before deleting room
+      room.players.forEach(p => { if (p.disconnectTimer) clearTimeout(p.disconnectTimer); });
+      delete rooms[code];
+      return;
     }
+
+    // Player disconnect — grace period (2 minutes to reconnect)
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    player.disconnected = true;
+    player.disconnectTimer = setTimeout(() => {
+      // Permanently remove after grace period
+      const r = rooms[code];
+      if (!r) return;
+      r.players = r.players.filter(p => p.id !== player.id);
+      io.to(code).emit('player-list', getPlayers(r).map(playerData));
+    }, 120000); // 2 minute grace period
+
+    io.to(code).emit('player-list', getPlayers(room).map(playerData));
   });
 });
 
@@ -372,8 +445,17 @@ function startVoting(code) {
     [answerList[i], answerList[j]] = [answerList[j], answerList[i]];
   }
 
-  // Send host the spectator voting view
-  io.to(room.admin.id).emit('host-voting-view', { question: room.currentQuestion.question });
+  // Send host the spectator voting view with all answers visible
+  const hostAnswerList = answerList.map(a => ({
+    answer: a.answer,
+    name: a.id === '__host__' ? room.admin.name : (room.answers[a.id] ? room.answers[a.id].name : ''),
+    avatar: a.id === '__host__' ? room.admin.avatar : (() => { const p = room.players.find(p => p.id === a.id); return p ? p.avatar : ''; })(),
+    isHostAnswer: a.id === '__host__',
+  }));
+  io.to(room.admin.id).emit('host-voting-view', {
+    question: room.currentQuestion.question,
+    answers: hostAnswerList,
+  });
 
   // Send voting options to each player
   for (const player of room.players) {
@@ -573,18 +655,18 @@ function showConsensusResults(code) {
 
   results.sort((a, b) => b.votes - a.votes);
 
-  // Score: 2 points per vote received on your answer
+  // Score: 1 point per vote received on your answer
   for (const r of results) {
     if (r.id === '__host__') continue; // host doesn't earn score
     const player = room.players.find(p => p.id === r.id);
-    if (player) player.score += r.votes * 2;
+    if (player) player.score += r.votes;
   }
 
-  // Score: 1 point if you voted for the host's answer
+  // Score: 0.5 points if you voted for the host's answer
   for (const [voterId, votedForId] of Object.entries(room.votes)) {
     if (votedForId === '__host__') {
       const player = room.players.find(p => p.id === voterId);
-      if (player) player.score += 1;
+      if (player) player.score += 0.5;
     }
   }
 
