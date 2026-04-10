@@ -383,33 +383,31 @@ function quickPlay(index) {
   var quizzes = getAllQuizzes();
   quickStartQuiz = quizzes[index];
 
-  // Check if we have a saved host name from a previous session
-  var savedName = localStorage.getItem('vc_host_name');
-  var savedAvatar = localStorage.getItem('vc_host_avatar') || AVATARS[0];
+  // Use saved host name, or default to "Host"
+  var hostName = localStorage.getItem('vc_host_name') || 'Host';
+  var hostAvatar = localStorage.getItem('vc_host_avatar') || AVATARS[Math.floor(Math.random() * AVATARS.length)];
 
-  if (savedName) {
-    // Skip create screen — auto-create room and go straight to lobby
-    selectedAvatar = savedAvatar;
-    socket.emit('create-room', { name: savedName, avatar: savedAvatar }, function(res) {
-      if (res.success) {
-        isAdmin = true;
-        roomCode = res.code;
-        preloadedQuestions = quickStartQuiz.questions.map(function(q) { return Object.assign({}, q); });
-        socket.emit('load-questions', preloadedQuestions);
-        document.getElementById('lobby-code').textContent = roomCode;
-        document.getElementById('admin-controls').style.display = 'block';
-        document.getElementById('queue-count').textContent = preloadedQuestions.length;
-        document.getElementById('btn-start-next').textContent = 'Start Quiz';
-        setJoinLink(roomCode);
-        showScreen('screen-lobby');
-        generateQR('lobby-qr', roomCode);
-        quickStartQuiz = null;
-      }
-    });
-  } else {
-    // First time — need to enter name
-    showScreen('screen-create');
-  }
+  // Go straight to lobby — no create screen
+  selectedAvatar = hostAvatar;
+  socket.emit('create-room', { name: hostName, avatar: hostAvatar }, function(res) {
+    if (res.success) {
+      isAdmin = true;
+      roomCode = res.code;
+      preloadedQuestions = quickStartQuiz.questions.map(function(q) { return Object.assign({}, q); });
+      socket.emit('load-questions', preloadedQuestions);
+      document.getElementById('lobby-code').textContent = roomCode;
+      document.getElementById('admin-controls').style.display = 'block';
+      document.getElementById('queue-count').textContent = preloadedQuestions.length;
+      document.getElementById('btn-start-next').textContent = 'Start Quiz';
+      setJoinLink(roomCode);
+      showScreen('screen-lobby');
+      generateQR('lobby-qr', roomCode);
+      // Save for future use
+      localStorage.setItem('vc_host_name', hostName);
+      localStorage.setItem('vc_host_avatar', hostAvatar);
+      quickStartQuiz = null;
+    }
+  });
 }
 
 // ── AI Quiz Generation ──
