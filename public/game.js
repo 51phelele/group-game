@@ -382,7 +382,34 @@ function renderHomeSavedQuizzes() {
 function quickPlay(index) {
   var quizzes = getAllQuizzes();
   quickStartQuiz = quizzes[index];
-  showScreen('screen-create');
+
+  // Check if we have a saved host name from a previous session
+  var savedName = localStorage.getItem('vc_host_name');
+  var savedAvatar = localStorage.getItem('vc_host_avatar') || AVATARS[0];
+
+  if (savedName) {
+    // Skip create screen — auto-create room and go straight to lobby
+    selectedAvatar = savedAvatar;
+    socket.emit('create-room', { name: savedName, avatar: savedAvatar }, function(res) {
+      if (res.success) {
+        isAdmin = true;
+        roomCode = res.code;
+        preloadedQuestions = quickStartQuiz.questions.map(function(q) { return Object.assign({}, q); });
+        socket.emit('load-questions', preloadedQuestions);
+        document.getElementById('lobby-code').textContent = roomCode;
+        document.getElementById('admin-controls').style.display = 'block';
+        document.getElementById('queue-count').textContent = preloadedQuestions.length;
+        document.getElementById('btn-start-next').textContent = 'Start Quiz';
+        setJoinLink(roomCode);
+        showScreen('screen-lobby');
+        generateQR('lobby-qr', roomCode);
+        quickStartQuiz = null;
+      }
+    });
+  } else {
+    // First time — need to enter name
+    showScreen('screen-create');
+  }
 }
 
 // ── AI Quiz Generation ──
@@ -453,6 +480,10 @@ function createRoom() {
     if (res.success) {
       isAdmin = true;
       roomCode = res.code;
+
+      // Save host name/avatar for future quick plays
+      localStorage.setItem('vc_host_name', name);
+      localStorage.setItem('vc_host_avatar', selectedAvatar);
 
       if (quickStartQuiz) {
         // Quick start: load saved quiz and go straight to lobby
