@@ -1267,8 +1267,28 @@ function sfRoleContinue() {
 
 function sfEnterGame() {
   if (isSfAdmin) {
+    document.getElementById('sf-admin-chat-feed').innerHTML = '';
     showScreen('screen-sf-admin');
   } else {
+    var badge = document.getElementById('sf-player-role-badge');
+    var locPanel = document.getElementById('sf-locations-panel');
+    var guessBtn = document.getElementById('sf-guess-btn');
+    var locList = document.getElementById('sf-loc-list');
+    if (sfIsSpy) {
+      badge.innerHTML = '<span class="sf-spy-badge">🕵️ YOU ARE THE SPY</span>';
+      badge.className = 'sf-role-badge sf-spy-badge-wrap';
+      guessBtn.style.display = 'inline-block';
+      locPanel.style.display = 'block';
+      locList.innerHTML = sfAllLocations.map(function(l) {
+        return '<span class="sf-loc-chip">' + escapeHtml(l) + '</span>';
+      }).join('');
+    } else {
+      badge.innerHTML = '📍 <strong>' + escapeHtml(sfMyLocation) + '</strong> &nbsp;·&nbsp; ' + escapeHtml(sfMyRole);
+      badge.className = 'sf-role-badge sf-loc-badge-wrap';
+      guessBtn.style.display = 'none';
+      locPanel.style.display = 'none';
+    }
+    document.getElementById('sf-chat-feed').innerHTML = '';
     showScreen('screen-sf-game');
   }
 }
@@ -1457,9 +1477,8 @@ socket.on('sf-admin-view', function(data) {
     }).join('');
 
   document.getElementById('sf-admin-chat-feed').innerHTML = '';
-  document.getElementById('sf-host-end-btn').style.display = 'none'; // shown in admin screen
-  showScreen('screen-sf-role');
-  // Role screen will auto-enter admin game screen
+  // Go straight to admin game screen — host doesn't need the role reveal
+  sfEnterGame();
 });
 
 socket.on('sf-timer', function(data) {
@@ -1549,6 +1568,19 @@ socket.on('sf-game-over', function(data) {
   sfShowResults(data);
 });
 
+socket.on('sf-error', function(data) {
+  var btn = document.getElementById('sf-start-btn');
+  var orig = btn ? btn.textContent : '';
+  if (btn) {
+    btn.textContent = data.message;
+    btn.style.background = 'rgba(226,27,60,0.3)';
+    setTimeout(function() {
+      btn.textContent = 'Start Game';
+      btn.style.background = '';
+    }, 3000);
+  }
+});
+
 socket.on('sf-back-to-lobby', function(data) {
   sfRenderPlayers(data.players, 'sf-lobby-player-list');
   sfRenderPlayers(data.players, 'sf-waiting-player-list');
@@ -1561,39 +1593,7 @@ socket.on('sf-back-to-lobby', function(data) {
   }
 });
 
-// ── SF game screen enter actions (role → game) ──
-// Redefine sfEnterGame with full setup logic
-sfEnterGame = function() {
-  if (isSfAdmin) {
-    document.getElementById('sf-admin-chat-feed').innerHTML = '';
-    showScreen('screen-sf-admin');
-  } else {
-    // Set up player game screen
-    var badge = document.getElementById('sf-player-role-badge');
-    var locPanel = document.getElementById('sf-locations-panel');
-    var guessBtn = document.getElementById('sf-guess-btn');
-    var locList = document.getElementById('sf-loc-list');
-
-    if (sfIsSpy) {
-      badge.innerHTML = '<span class="sf-spy-badge">🕵️ YOU ARE THE SPY</span>';
-      badge.className = 'sf-role-badge sf-spy-badge-wrap';
-      guessBtn.style.display = 'inline-block';
-      locPanel.style.display = 'block';
-      locList.innerHTML = sfAllLocations.map(function(l) {
-        return '<span class="sf-loc-chip">' + escapeHtml(l) + '</span>';
-      }).join('');
-    } else {
-      badge.innerHTML = '📍 <strong>' + escapeHtml(sfMyLocation) + '</strong> &nbsp;·&nbsp; ' + escapeHtml(sfMyRole);
-      badge.className = 'sf-role-badge sf-loc-badge-wrap';
-      guessBtn.style.display = 'none';
-      locPanel.style.display = 'none';
-    }
-
-    document.getElementById('sf-chat-feed').innerHTML = '';
-    document.getElementById('sf-host-end-btn').style.display = 'none';
-    showScreen('screen-sf-game');
-  }
-};
+// sfEnterGame is defined near the top of the Spyfall section
 
 // ── Enter key for SF chat ──
 document.getElementById('sf-chat-input').addEventListener('keydown', function(e) {

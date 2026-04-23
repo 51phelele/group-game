@@ -444,7 +444,10 @@ io.on('connection', (socket) => {
     const room = sfRooms[code];
     if (!room || room.admin.id !== socket.id) return;
     const activePlayers = room.players.filter(p => !p.disconnected);
-    if (activePlayers.length < 2) return;
+    if (activePlayers.length < 2) {
+      io.to(socket.id).emit('sf-error', { message: 'Need at least 2 players to start Spyfall!' });
+      return;
+    }
 
     const locData = SPYFALL_LOCATIONS[Math.floor(Math.random() * SPYFALL_LOCATIONS.length)];
     room.location = locData.name;
