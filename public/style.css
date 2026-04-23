@@ -1651,3 +1651,732 @@ h2 {
   font-size: 0.8rem;
   font-weight: 600;
 }
+
+/* ════════════════════════════════════════
+   SPYFALL
+   ════════════════════════════════════════ */
+
+/* ── Spy primary color ── */
+:root {
+  --spy-red: #e21b3c;
+  --spy-red-soft: rgba(226, 27, 60, 0.18);
+  --spy-red-border: rgba(226, 27, 60, 0.35);
+}
+
+/* ── Logo ── */
+.sf-logo {
+  font-family: 'Fredoka One', cursive;
+  font-size: 2.2rem;
+  background: linear-gradient(135deg, #e21b3c, #ff6b9d);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 8px;
+  letter-spacing: 2px;
+}
+
+/* ── Home card ── */
+.games-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 16px;
+  color: rgba(255, 255, 255, 0.2);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 700;
+}
+.games-divider::before, .games-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.spyfall-home-card {
+  background: var(--spy-red-soft);
+  border: 1px solid var(--spy-red-border);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.sf-home-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sf-home-icon {
+  font-size: 2rem;
+}
+
+.sf-home-title {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.2rem;
+  color: #ff6b9d;
+}
+
+.sf-home-desc {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 2px;
+}
+
+.sf-home-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.sf-home-buttons .btn {
+  flex: 1;
+}
+
+/* ── Spy button ── */
+.btn-spy {
+  background: linear-gradient(135deg, #e21b3c, #ff6b9d);
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+}
+
+.btn-spy:hover {
+  box-shadow: 0 4px 20px rgba(226, 27, 60, 0.4);
+}
+
+/* ── Role Reveal Card ── */
+.sf-role-card {
+  border-radius: 20px;
+  padding: 28px 24px;
+  margin: 16px 0 12px;
+  text-align: center;
+  transition: all 0.3s ease;
+  animation: bounceIn 0.5s ease;
+}
+
+.sf-spy-card {
+  background: var(--spy-red-soft);
+  border: 2px solid var(--spy-red-border);
+}
+
+.sf-location-card {
+  background: rgba(38, 137, 12, 0.15);
+  border: 2px solid rgba(38, 137, 12, 0.35);
+}
+
+.sf-card-icon {
+  font-size: 3rem;
+  margin-bottom: 10px;
+}
+
+.sf-card-title {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.6rem;
+  color: #ff6b9d;
+  margin-bottom: 8px;
+}
+
+.sf-card-location {
+  font-family: 'Fredoka One', cursive;
+  font-size: 2rem;
+  color: #7fff6b;
+  margin-bottom: 6px;
+}
+
+.sf-card-role {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 600;
+}
+
+.sf-card-sub {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.sf-role-hint {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+  margin-bottom: 16px;
+}
+
+.sf-role-auto {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.3);
+  margin-top: 10px;
+}
+
+/* ── Game screen layout ── */
+.sf-game-screen {
+  max-width: 600px;
+}
+
+.sf-game-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  padding: 12px 16px;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.sf-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 8px 0 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sf-timer {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.5rem;
+  color: #ffd200;
+  min-width: 60px;
+  text-align: right;
+}
+
+.sf-timer.sf-timer-low {
+  color: #e21b3c;
+  animation: timerPulse 0.5s ease-in-out infinite alternate;
+}
+
+.sf-role-badge {
+  font-size: 0.9rem;
+  font-weight: 700;
+  flex: 1;
+  text-align: left;
+}
+
+.sf-spy-badge-wrap .sf-spy-badge {
+  background: var(--spy-red-soft);
+  border: 1px solid var(--spy-red-border);
+  color: #ff6b9d;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  display: inline-block;
+}
+
+.sf-loc-badge-wrap {
+  color: #7fff6b;
+  font-size: 0.88rem;
+}
+
+.sf-admin-badge {
+  color: #ffd200;
+  font-family: 'Fredoka One', cursive;
+}
+
+.sf-game-players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sf-game-players .sf-player-chip {
+  font-size: 0.78rem;
+  padding: 4px 10px;
+}
+
+/* ── Chat feed ── */
+.sf-chat-feed {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+  min-height: 0;
+}
+
+.sf-chat-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  animation: fadeIn 0.2s ease;
+}
+
+.sf-chat-mine {
+  flex-direction: row-reverse;
+}
+
+.sf-chat-avatar {
+  font-size: 1.3rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.sf-chat-bubble {
+  display: flex;
+  flex-direction: column;
+  max-width: 75%;
+}
+
+.sf-chat-name {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.35);
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.sf-chat-mine .sf-chat-name {
+  text-align: right;
+}
+
+.sf-chat-text {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px 12px 12px 4px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.sf-chat-mine .sf-chat-text {
+  background: rgba(247, 151, 30, 0.15);
+  border-color: rgba(247, 151, 30, 0.25);
+  border-radius: 12px 12px 4px 12px;
+}
+
+/* ── Location panel (spy only) ── */
+.sf-locations-panel {
+  flex-shrink: 0;
+}
+
+.sf-loc-header {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  padding: 4px 0;
+  display: flex;
+  justify-content: space-between;
+}
+
+.sf-loc-list {
+  display: none;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.sf-loc-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Input bar ── */
+.sf-input-bar {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sf-input-bar input {
+  flex: 1;
+  margin-bottom: 0;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+}
+
+.sf-send-btn {
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.sf-action-bar {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  justify-content: center;
+  padding-bottom: 4px;
+}
+
+/* ── Accuse modal ── */
+.sf-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.sf-modal-inner {
+  background: #1e1b3a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 28px 24px;
+  text-align: center;
+  width: 100%;
+  max-width: 400px;
+}
+
+.sf-accuse-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.sf-accuse-player-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  width: 100%;
+}
+
+.sf-accuse-player-btn:hover {
+  background: var(--spy-red-soft);
+  border-color: var(--spy-red-border);
+  color: #ff6b9d;
+}
+
+/* ── Accusation screen ── */
+.sf-accusation-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.sf-acc-icon {
+  font-size: 2rem;
+}
+
+.sf-acc-text {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.sf-acc-accused {
+  margin-bottom: 16px;
+}
+
+.sf-acc-avatar {
+  font-size: 3rem;
+}
+
+.sf-acc-name {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.5rem;
+  margin-top: 4px;
+}
+
+.sf-acc-question {
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.sf-acc-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.sf-guilty-btn {
+  background: rgba(38, 137, 12, 0.25);
+  border: 2px solid rgba(38, 137, 12, 0.5);
+  color: #7fff6b;
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 14px 28px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Nunito', sans-serif;
+}
+
+.sf-guilty-btn:hover {
+  background: rgba(38, 137, 12, 0.4);
+  transform: scale(1.03);
+}
+
+.sf-notguilty-btn {
+  background: var(--spy-red-soft);
+  border: 2px solid var(--spy-red-border);
+  color: #ff6b6b;
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 14px 28px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Nunito', sans-serif;
+}
+
+.sf-notguilty-btn:hover {
+  background: rgba(226, 27, 60, 0.3);
+  transform: scale(1.03);
+}
+
+.sf-acc-timer {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.8rem;
+  color: #ffd200;
+  margin-bottom: 4px;
+}
+
+/* ── Spy guess screen ── */
+.sf-spy-caught-header {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.sf-caught-sub {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.sf-guess-timer-wrap {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.sf-guess-timer {
+  font-family: 'Fredoka One', cursive;
+  font-size: 3rem;
+  color: #e21b3c;
+  animation: timerPulse 1s ease-in-out infinite alternate;
+  display: inline-block;
+}
+
+.sf-guess-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.sf-loc-guess-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  width: 100%;
+  font-family: 'Nunito', sans-serif;
+}
+
+.sf-loc-guess-btn:hover:not(:disabled) {
+  background: var(--spy-red-soft);
+  border-color: var(--spy-red-border);
+  color: #ff6b9d;
+}
+
+.sf-loc-guess-btn.selected {
+  background: var(--spy-red-soft);
+  border-color: var(--spy-red-border);
+  color: #ff6b9d;
+}
+
+.sf-loc-guess-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Caught wait screen ── */
+.sf-caught-location {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+/* ── Results ── */
+.sf-result-banner {
+  margin-bottom: 16px;
+}
+
+.sf-banner {
+  font-family: 'Fredoka One', cursive;
+  font-size: 2.2rem;
+  letter-spacing: 1px;
+  padding: 12px 0;
+}
+
+.sf-spy-wins {
+  background: linear-gradient(135deg, #e21b3c, #ff6b9d);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.sf-players-win {
+  background: linear-gradient(135deg, #26890c, #7fff6b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.sf-revealed {
+  color: #ffd200;
+}
+
+.sf-result-spy-card, .sf-result-loc-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.sf-result-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.35);
+  margin-bottom: 6px;
+}
+
+.sf-result-spy-name {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.6rem;
+  color: #ff6b9d;
+}
+
+.sf-result-loc-name {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.6rem;
+  color: #7fff6b;
+}
+
+.sf-result-guess-wrong {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 4px;
+}
+
+.sf-result-reason {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 20px;
+  font-style: italic;
+}
+
+.sf-result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Admin Game View ── */
+.sf-admin-spy-info {
+  background: var(--spy-red-soft);
+  border: 1px solid var(--spy-red-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+
+.sf-admin-spy-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.sf-admin-spy-row:last-child { margin-bottom: 0; }
+
+.sf-admin-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 700;
+  min-width: 90px;
+}
+
+.sf-admin-spy-name {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.1rem;
+  color: #ff6b9d;
+}
+
+.sf-admin-loc-name {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.1rem;
+  color: #7fff6b;
+}
+
+.sf-admin-roles {
+  flex-shrink: 0;
+  max-height: 140px;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.sf-admin-roles-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.3);
+  margin-bottom: 6px;
+}
+
+.sf-admin-role-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 0.82rem;
+}
+
+.sf-admin-spy-row-hl {
+  background: var(--spy-red-soft);
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+
+.sf-admin-player-name {
+  font-weight: 700;
+  flex: 1;
+}
+
+.sf-admin-player-role {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.78rem;
+}

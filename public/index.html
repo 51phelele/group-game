@@ -19,6 +19,20 @@
           <button class="btn btn-primary" onclick="showScreen('screen-create')">Create Game</button>
           <button class="btn btn-secondary" onclick="showScreen('screen-join')">Join Game</button>
         </div>
+        <div class="games-divider"><span>or try</span></div>
+        <div class="spyfall-home-card">
+          <div class="sf-home-header">
+            <span class="sf-home-icon">🕵️</span>
+            <div class="sf-home-info">
+              <div class="sf-home-title">Spyfall</div>
+              <div class="sf-home-desc">Find the spy before they find you</div>
+            </div>
+          </div>
+          <div class="sf-home-buttons">
+            <button class="btn btn-spy btn-small" onclick="showScreen('screen-sf-create')">Create Room</button>
+            <button class="btn btn-secondary btn-small" onclick="showScreen('screen-join')">Join Room</button>
+          </div>
+        </div>
         <div id="home-saved-section" class="home-saved-section" style="display:none">
           <h3 class="home-section-title">My Quizzes</h3>
           <div id="home-saved-list" class="home-saved-list"></div>
@@ -350,6 +364,206 @@
         <h2>Room Closed</h2>
         <p>The host has left the game.</p>
         <button class="btn btn-primary" onclick="location.reload()">Back to Home</button>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════ -->
+    <!-- SPYFALL SCREENS                       -->
+    <!-- ════════════════════════════════════ -->
+
+    <!-- SF CREATE (host) -->
+    <div id="screen-sf-create" class="screen">
+      <div class="card">
+        <div class="sf-logo">🕵️ SPYFALL</div>
+        <p class="tagline">Find the spy — or stay hidden</p>
+        <input type="text" id="sf-admin-name" placeholder="Your name" maxlength="20" autocomplete="off">
+        <p class="avatar-label">Pick your avatar</p>
+        <div id="sf-create-avatar-picker" class="avatar-picker"></div>
+        <div class="time-selector">
+          <span class="time-label">Game Duration:</span>
+          <div class="time-pills">
+            <label class="time-pill"><input type="radio" name="sf-duration" value="300"><span>5 min</span></label>
+            <label class="time-pill"><input type="radio" name="sf-duration" value="480" checked><span>8 min</span></label>
+            <label class="time-pill"><input type="radio" name="sf-duration" value="600"><span>10 min</span></label>
+          </div>
+        </div>
+        <button class="btn btn-spy" onclick="createSfRoom()">Create Spyfall Room</button>
+        <button class="btn btn-back" onclick="showScreen('screen-home')">Back</button>
+      </div>
+    </div>
+
+    <!-- SF LOBBY (host waits for players) -->
+    <div id="screen-sf-lobby" class="screen">
+      <div class="card wide">
+        <div class="sf-logo" style="font-size:1.6rem;margin-bottom:4px">🕵️ SPYFALL</div>
+        <div class="room-code-display">
+          <span class="label">Room Code</span>
+          <span class="code" id="sf-lobby-code"></span>
+          <div id="sf-lobby-qr" class="qr-container"></div>
+          <span class="qr-hint">Scan to join</span>
+          <div class="join-link-section">
+            <p class="label">Or share this link:</p>
+            <div class="link-container">
+              <input type="text" id="sf-join-link" readonly class="join-link-input">
+              <button class="btn btn-small" onclick="copySfJoinLink()">Copy</button>
+            </div>
+          </div>
+        </div>
+        <h2>Players <span id="sf-lobby-count" style="font-size:1rem;color:rgba(255,255,255,0.4)"></span></h2>
+        <div id="sf-lobby-player-list" class="player-list"></div>
+        <div class="time-selector" style="justify-content:center;margin-bottom:16px">
+          <span class="time-label">Duration:</span>
+          <div class="time-pills">
+            <label class="time-pill"><input type="radio" name="sf-lobby-dur" value="300"><span>5 min</span></label>
+            <label class="time-pill"><input type="radio" name="sf-lobby-dur" value="480" checked><span>8 min</span></label>
+            <label class="time-pill"><input type="radio" name="sf-lobby-dur" value="600"><span>10 min</span></label>
+          </div>
+        </div>
+        <button class="btn btn-spy btn-glow" id="sf-start-btn" onclick="sfStartGame()">Start Game</button>
+      </div>
+    </div>
+
+    <!-- SF WAITING (player waits for host) -->
+    <div id="screen-sf-waiting" class="screen">
+      <div class="card wide">
+        <div class="sf-logo" style="font-size:1.6rem;margin-bottom:4px">🕵️ SPYFALL</div>
+        <div class="room-code-display">
+          <span class="label">Room Code</span>
+          <span class="code" id="sf-waiting-code"></span>
+        </div>
+        <h2>Players</h2>
+        <div id="sf-waiting-player-list" class="player-list"></div>
+        <p class="waiting-text">Waiting for the host to start...</p>
+      </div>
+    </div>
+
+    <!-- SF ROLE REVEAL (private per player) -->
+    <div id="screen-sf-role" class="screen">
+      <div class="card">
+        <span class="round-badge" id="sf-role-round">Round 1</span>
+        <div id="sf-role-card" class="sf-role-card">
+          <!-- filled by JS -->
+        </div>
+        <p id="sf-role-hint" class="sf-role-hint"></p>
+        <button class="btn btn-spy" id="sf-role-continue-btn" onclick="sfRoleContinue()">I'm Ready</button>
+        <p class="sf-role-auto" id="sf-role-auto">Auto-starting in <span id="sf-role-countdown">8</span>s...</p>
+      </div>
+    </div>
+
+    <!-- SF GAME — PLAYER VIEW -->
+    <div id="screen-sf-game" class="screen sf-game-screen">
+      <div class="sf-game-layout">
+        <!-- Top bar: location info + timer -->
+        <div class="sf-top-bar">
+          <div id="sf-player-role-badge" class="sf-role-badge"></div>
+          <div id="sf-game-timer" class="sf-timer">8:00</div>
+        </div>
+        <!-- Player chips -->
+        <div id="sf-game-players" class="sf-game-players"></div>
+        <!-- Chat feed -->
+        <div id="sf-chat-feed" class="sf-chat-feed"></div>
+        <!-- Spy location list (spy only, hidden by default) -->
+        <div id="sf-locations-panel" class="sf-locations-panel" style="display:none">
+          <div class="sf-loc-header" onclick="toggleLocPanel()">
+            📍 All Locations <span id="sf-loc-toggle">▼</span>
+          </div>
+          <div id="sf-loc-list" class="sf-loc-list"></div>
+        </div>
+        <!-- Input bar -->
+        <div class="sf-input-bar">
+          <input type="text" id="sf-chat-input" placeholder="Say something..." maxlength="200" autocomplete="off">
+          <button class="btn btn-spy btn-small sf-send-btn" onclick="sfSendChat()">Send</button>
+        </div>
+        <div class="sf-action-bar">
+          <button class="btn btn-secondary btn-small" onclick="sfShowAccuseModal()">🎯 Accuse</button>
+          <button class="btn btn-small sf-guess-btn" id="sf-guess-btn" style="display:none" onclick="sfShowGuessModal()">🔍 Guess Location</button>
+          <button class="btn btn-small btn-secondary" id="sf-host-end-btn" style="display:none" onclick="sfHostEnd()">⏹ End Game</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SF ACCUSE MODAL (overlay) -->
+    <div id="sf-accuse-modal" class="sf-modal" style="display:none">
+      <div class="sf-modal-inner">
+        <h3>🎯 Who is the spy?</h3>
+        <p style="color:rgba(255,255,255,0.5);font-size:0.88rem;margin-bottom:12px">Select a player to accuse</p>
+        <div id="sf-accuse-list" class="sf-accuse-list"></div>
+        <button class="btn btn-secondary btn-small" onclick="sfCloseAccuseModal()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- SF ACCUSATION VOTE (all players) -->
+    <div id="screen-sf-accusation" class="screen">
+      <div class="card">
+        <div class="sf-accusation-header">
+          <span class="sf-acc-icon">⚠️</span>
+          <h2>Accusation!</h2>
+        </div>
+        <p id="sf-acc-text" class="sf-acc-text"></p>
+        <div id="sf-acc-accused" class="sf-acc-accused"></div>
+        <p class="sf-acc-question">Is this person the spy?</p>
+        <div class="sf-acc-buttons" id="sf-acc-vote-buttons">
+          <button class="btn sf-guilty-btn" onclick="sfVote(true)">✅ Guilty</button>
+          <button class="btn sf-notguilty-btn" onclick="sfVote(false)">❌ Not Guilty</button>
+        </div>
+        <div id="sf-acc-voted-msg" class="status" style="display:none">Vote cast — waiting for others...</div>
+        <div id="sf-acc-timer" class="sf-acc-timer"></div>
+        <div id="sf-acc-count" class="status"></div>
+      </div>
+    </div>
+
+    <!-- SF SPY GUESS (spy only) -->
+    <div id="screen-sf-spy-guess" class="screen">
+      <div class="card wide">
+        <div class="sf-spy-caught-header">
+          <span style="font-size:2.5rem">🕵️</span>
+          <h2>You've been caught!</h2>
+          <p class="sf-caught-sub">Guess the location to still win</p>
+        </div>
+        <div class="sf-guess-timer-wrap">
+          <div id="sf-guess-timer" class="sf-guess-timer">30</div>
+          <p style="color:rgba(255,255,255,0.4);font-size:0.8rem">seconds left</p>
+        </div>
+        <div id="sf-guess-list" class="sf-guess-list"></div>
+      </div>
+    </div>
+
+    <!-- SF SPY CAUGHT — non-spy waiting screen -->
+    <div id="screen-sf-caught-wait" class="screen">
+      <div class="card">
+        <span style="font-size:3rem">🕵️</span>
+        <h2 id="sf-caught-name" style="margin-top:12px"></h2>
+        <p class="waiting-text">was caught! They're guessing the location...</p>
+        <div id="sf-cw-timer" class="sf-guess-timer" style="margin:20px auto"></div>
+        <p id="sf-cw-location" class="sf-caught-location"></p>
+      </div>
+    </div>
+
+    <!-- SF RESULTS -->
+    <div id="screen-sf-results" class="screen">
+      <div id="sf-confetti"></div>
+      <div class="card wide">
+        <div id="sf-result-banner" class="sf-result-banner"></div>
+        <div id="sf-result-spy" class="sf-result-spy"></div>
+        <div id="sf-result-location" class="sf-result-location"></div>
+        <p id="sf-result-reason" class="sf-result-reason"></p>
+        <div id="sf-result-actions" class="sf-result-actions"></div>
+      </div>
+    </div>
+
+    <!-- SF ADMIN GAME VIEW (host) -->
+    <div id="screen-sf-admin" class="screen sf-game-screen">
+      <div class="sf-game-layout">
+        <div class="sf-top-bar">
+          <div class="sf-role-badge sf-admin-badge">👁 Host View</div>
+          <div id="sf-admin-timer" class="sf-timer">8:00</div>
+        </div>
+        <div id="sf-admin-spy-info" class="sf-admin-spy-info"></div>
+        <div id="sf-admin-roles" class="sf-admin-roles"></div>
+        <div id="sf-admin-chat-feed" class="sf-chat-feed"></div>
+        <div class="sf-action-bar">
+          <button class="btn btn-small btn-secondary" onclick="sfHostEnd()">⏹ End Game</button>
+        </div>
       </div>
     </div>
 

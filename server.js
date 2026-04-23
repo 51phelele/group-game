@@ -85,11 +85,50 @@ Rules:
 });
 
 const rooms = {};
+const sfRooms = {};
+const SF_ACCUSATION_TIMERS = {};
+
+// ── Spyfall Locations ──
+const SPYFALL_LOCATIONS = [
+  { name: 'Hospital',       roles: ['Doctor','Nurse','Patient','Surgeon','Receptionist','Paramedic','Security Guard','Janitor'] },
+  { name: 'Space Station',  roles: ['Astronaut','Commander','Engineer','Scientist','Mission Control','Medic','Cook','Robot'] },
+  { name: 'Casino',         roles: ['Dealer','Security Guard','Bartender','High Roller','Pit Boss','Gambler','Manager','Entertainer'] },
+  { name: 'Beach Resort',   roles: ['Lifeguard','Tourist','Bartender','Hotel Manager','Surfer','Vendor','Photographer','Scuba Instructor'] },
+  { name: 'Military Base',  roles: ['Private','Sergeant','General','Medic','Intelligence Officer','Cook','Guard','Drill Instructor'] },
+  { name: 'Police Station', roles: ['Detective','Officer','Chief','Criminal','Lawyer','Forensic Specialist','Receptionist','Informant'] },
+  { name: 'Restaurant',     roles: ['Chef','Waiter','Manager','Food Critic','Customer','Dishwasher','Sommelier','Host'] },
+  { name: 'School',         roles: ['Teacher','Principal','Student','Janitor','Coach','Librarian','Security Guard','Counselor'] },
+  { name: 'Movie Studio',   roles: ['Director','Actor','Camera Operator','Producer','Stunt Double','Makeup Artist','Writer','Extra'] },
+  { name: 'Submarine',      roles: ['Captain','Navigator','Engineer','Cook','Torpedo Officer','Medic','Sonar Operator','Electrician'] },
+  { name: 'Bank',           roles: ['Manager','Teller','Security Guard','Loan Officer','Customer','Accountant','Robber','IT Specialist'] },
+  { name: 'Circus',         roles: ['Acrobat','Clown','Ringmaster','Lion Tamer','Magician','Juggler','Ticket Seller','Vendor'] },
+  { name: 'Pirate Ship',    roles: ['Captain','First Mate','Navigator','Cook','Cannoneer','Lookout','Prisoner','Surgeon'] },
+  { name: 'Cruise Ship',    roles: ['Captain','Passenger','Bartender','Entertainment Director','Chef','Housekeeper','Doctor','Waiter'] },
+  { name: 'Museum',         roles: ['Curator','Tour Guide','Security Guard','Visitor','Historian','Restorer','Thief','Gift Shop Worker'] },
+  { name: 'Airport',        roles: ['Pilot','Flight Attendant','Security Officer','Passenger','Air Traffic Controller','Baggage Handler','Check-in Agent','Customs Officer'] },
+  { name: 'Supermarket',    roles: ['Cashier','Manager','Stock Boy','Customer','Security Guard','Baker','Butcher','Delivery Driver'] },
+  { name: 'Library',        roles: ['Librarian','Student','Researcher','Author','Janitor','Security Guard','Story Reader','Lost Tourist'] },
+  { name: 'Zoo',            roles: ['Zookeeper','Vet','Tour Guide','Visitor','Photographer','Trainer','Manager','Maintenance Worker'] },
+  { name: 'Football Stadium', roles: ['Quarterback','Coach','Referee','Spectator','Cheerleader','Commentator','Security Guard','Vendor'] },
+  { name: 'Airplane',       roles: ['Pilot','Co-Pilot','Flight Attendant','Passenger','Air Marshal','Mechanic','First Class Passenger','Customs Agent'] },
+  { name: 'Day Spa',        roles: ['Masseuse','Receptionist','Manager','Customer','Manicurist','Yoga Instructor','Nutritionist','Sauna Attendant'] },
+  { name: 'University',     roles: ['Professor','Student','Dean','Janitor','Librarian','Coach','Graduate Student','Security Guard'] },
+  { name: 'Corporate Office', roles: ['CEO','Secretary','IT Specialist','Intern','Sales Manager','Accountant','Security Guard','Janitor'] },
+  { name: 'Haunted House',  roles: ['Ghost','Witch','Monster','Frightened Visitor','Tour Guide','Actor','Owner','Paranormal Investigator'] },
+  { name: 'Train Station',  roles: ['Conductor','Passenger','Station Master','Pickpocket','Police Officer','Cleaner','Ticket Inspector','Vendor'] },
+  { name: 'Hotel',          roles: ['Receptionist','Guest','Bellboy','Housekeeper','Manager','Chef','Security Guard','Concierge'] },
+  { name: 'Amusement Park', roles: ['Ride Operator','Visitor','Manager','Cotton Candy Seller','Security Guard','Mascot','Game Attendant','Maintenance Worker'] },
+  { name: 'Night Club',     roles: ['DJ','Bartender','Bouncer','Clubber','VIP Guest','Manager','Coat Check','Promoter'] },
+  { name: 'Ski Resort',     roles: ['Ski Instructor','Skier','Snowboarder','Lodge Manager','Ski Patrol','Lift Operator','Chef','Equipment Rental Staff'] },
+];
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  let code;
+  do {
+    code = '';
+    for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  } while (rooms[code] || sfRooms[code]);
   return code;
 }
 
@@ -176,10 +215,67 @@ io.on('connection', (socket) => {
     room.totalQuestions = questions.length;
   });
 
+  // ── Create Spyfall Room ──
+  socket.on('create-sf-room', (data, callback) => {
+    const { name, avatar, gameDuration } = data;
+    const code = generateRoomCode();
+    sfRooms[code] = {
+      admin: { id: socket.id, name, avatar: avatar || '🦊' },
+      players: [],
+      phase: 'lobby',
+      location: null,
+      spyId: null,
+      timer: null,
+      timeRemaining: 0,
+      gameDuration: gameDuration || 480,
+      chat: [],
+      accusation: null,
+      round: 0,
+    };
+    socket.join(code);
+    socket.roomCode = code;
+    socket.playerName = name;
+    callback({ success: true, code });
+  });
+
   // ── Player joins ──
   socket.on('join-room', (data, callback) => {
     const { code, name, avatar } = data;
     const room = rooms[code];
+
+    // ── Check if it's a Spyfall room ──
+    if (!room) {
+      const sfRoom = sfRooms[code];
+      if (sfRoom) {
+        const existing = sfRoom.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+        if (existing) {
+          if (existing.disconnected) {
+            clearTimeout(existing.disconnectTimer);
+            existing.id = socket.id;
+            existing.avatar = avatar || existing.avatar;
+            existing.disconnected = false;
+            delete existing.disconnectTimer;
+            socket.join(code);
+            socket.roomCode = code;
+            socket.playerName = name;
+            callback({ success: true, reconnected: true, gameType: 'spyfall' });
+            io.to(code).emit('sf-player-list', sfRoom.players.map(playerData));
+            return;
+          }
+          return callback({ success: false, error: 'Name already taken' });
+        }
+        if (sfRoom.phase !== 'lobby') return callback({ success: false, error: 'Game already in progress' });
+        sfRoom.players.push({ id: socket.id, name, avatar: avatar || '🦊', score: 0 });
+        socket.join(code);
+        socket.roomCode = code;
+        socket.playerName = name;
+        callback({ success: true, gameType: 'spyfall' });
+        io.to(code).emit('sf-player-list', sfRoom.players.map(playerData));
+        return;
+      }
+      return callback({ success: false, error: 'Room not found' });
+    }
+
     if (!room) return callback({ success: false, error: 'Room not found' });
 
     // Check if this player is reconnecting (same name, was disconnected)
@@ -342,9 +438,208 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── Spyfall: Start Game ──
+  socket.on('sf-start-game', (opts) => {
+    const code = socket.roomCode;
+    const room = sfRooms[code];
+    if (!room || room.admin.id !== socket.id) return;
+    const activePlayers = room.players.filter(p => !p.disconnected);
+    if (activePlayers.length < 2) return;
+
+    const locData = SPYFALL_LOCATIONS[Math.floor(Math.random() * SPYFALL_LOCATIONS.length)];
+    room.location = locData.name;
+    const spyIndex = Math.floor(Math.random() * activePlayers.length);
+    room.spyId = activePlayers[spyIndex].id;
+
+    const shuffledRoles = [...locData.roles].sort(() => Math.random() - 0.5);
+    room.phase = 'playing';
+    room.timeRemaining = (opts && opts.duration) ? opts.duration : room.gameDuration;
+    room.chat = [];
+    room.accusation = null;
+    room.round++;
+
+    let roleIdx = 0;
+    for (const player of activePlayers) {
+      const isSpy = player.id === room.spyId;
+      io.to(player.id).emit('sf-role', {
+        isSpy,
+        location: isSpy ? null : room.location,
+        role: isSpy ? null : shuffledRoles[roleIdx++ % shuffledRoles.length],
+        allLocations: isSpy ? SPYFALL_LOCATIONS.map(l => l.name) : null,
+        playerCount: activePlayers.length,
+        round: room.round,
+      });
+    }
+
+    // Admin sees everything
+    io.to(room.admin.id).emit('sf-admin-view', {
+      location: room.location,
+      spyId: room.spyId,
+      round: room.round,
+      players: activePlayers.map((p, i) => ({
+        id: p.id, name: p.name, avatar: p.avatar,
+        isSpy: p.id === room.spyId,
+        role: p.id === room.spyId ? '🕵️ THE SPY' : shuffledRoles[i % shuffledRoles.length],
+      })),
+    });
+
+    sfStartTimer(code);
+  });
+
+  // ── Spyfall: Chat ──
+  socket.on('sf-send-chat', (message) => {
+    const code = socket.roomCode;
+    const room = sfRooms[code];
+    if (!room || room.phase !== 'playing') return;
+    if (!message || !message.trim()) return;
+    const isAdmin = socket.id === room.admin.id;
+    const player = room.players.find(p => p.id === socket.id);
+    const sender = isAdmin ? room.admin : player;
+    if (!sender) return;
+    const msg = {
+      senderId: socket.id,
+      name: sender.name,
+      avatar: sender.avatar,
+      text: message.trim().slice(0, 200),
+      ts: Date.now(),
+    };
+    room.chat.push(msg);
+    if (room.chat.length > 150) room.chat.shift();
+    io.to(code).emit('sf-chat-message', msg);
+  });
+
+  // ── Spyfall: Call Accusation ──
+  socket.on('sf-call-accusation', (accusedId) => {
+    const code = socket.roomCode;
+    const room = sfRooms[code];
+    if (!room || room.phase !== 'playing') return;
+    if (socket.id === room.admin.id) return;
+    if (accusedId === socket.id) return;
+    const accused = room.players.find(p => p.id === accusedId && !p.disconnected);
+    if (!accused) return;
+
+    sfClearTimer(code);
+    room.phase = 'accusation';
+    room.accusation = {
+      accuserId: socket.id,
+      accuserName: socket.playerName,
+      accusedId,
+      accusedName: accused.name,
+      accusedAvatar: accused.avatar,
+      votes: {},
+    };
+
+    io.to(code).emit('sf-accusation-called', {
+      accuserName: socket.playerName,
+      accusedId,
+      accusedName: accused.name,
+      accusedAvatar: accused.avatar,
+    });
+
+    sfStartAccusationTimer(code, 30);
+  });
+
+  // ── Spyfall: Vote on Accusation ──
+  socket.on('sf-accusation-vote', (guilty) => {
+    const code = socket.roomCode;
+    const room = sfRooms[code];
+    if (!room || room.phase !== 'accusation') return;
+    if (socket.id === room.admin.id) return;
+    if (room.accusation.votes[socket.id] !== undefined) return;
+
+    room.accusation.votes[socket.id] = !!guilty;
+    const voters = room.players.filter(p => !p.disconnected);
+    const votesIn = Object.keys(room.accusation.votes).length;
+    io.to(code).emit('sf-accusation-vote-count', { voted: votesIn, total: voters.length });
+
+    if (votesIn >= voters.length) {
+      sfClearAccusationTimer(code);
+      sfResolveAccusation(code);
+    }
+  });
+
+  // ── Spyfall: Spy Guesses Location ──
+  socket.on('sf-spy-guess', (guess) => {
+    const code = socket.roomCode;
+    const room = sfRooms[code];
+    if (!room || room.phase !== 'spy-guess') return;
+    if (socket.id !== room.spyId) return;
+    sfClearAccusationTimer(code);
+    const correct = guess === room.location;
+    room.phase = 'results';
+    const spyPlayer = room.players.find(p => p.id === room.spyId);
+    io.to(code).emit('sf-game-over', {
+      spyId: room.spyId,
+      spyName: spyPlayer ? spyPlayer.name : '?',
+      spyAvatar: spyPlayer ? spyPlayer.avatar : '',
+      location: room.location,
+      locationGuess: guess,
+      winner: correct ? 'spy' : 'players',
+      reason: correct ? `The spy guessed "${guess}" — correct! Spy wins!` : `The spy guessed "${guess}" — wrong! Players win!`,
+    });
+  });
+
+  // ── Spyfall: End Game (host) ──
+  socket.on('sf-end-game', () => {
+    const code = socket.roomCode;
+    const room = sfRooms[code];
+    if (!room || room.admin.id !== socket.id) return;
+    sfClearTimer(code);
+    sfClearAccusationTimer(code);
+    room.phase = 'results';
+    const spyPlayer = room.players.find(p => p.id === room.spyId);
+    io.to(code).emit('sf-game-over', {
+      spyId: room.spyId,
+      spyName: spyPlayer ? spyPlayer.name : '?',
+      spyAvatar: spyPlayer ? spyPlayer.avatar : '',
+      location: room.location,
+      winner: 'revealed',
+      reason: 'The host revealed the results.',
+    });
+  });
+
+  // ── Spyfall: Play Again ──
+  socket.on('sf-play-again', () => {
+    const code = socket.roomCode;
+    const room = sfRooms[code];
+    if (!room || room.admin.id !== socket.id) return;
+    room.phase = 'lobby';
+    room.location = null;
+    room.spyId = null;
+    room.chat = [];
+    room.accusation = null;
+    io.to(code).emit('sf-back-to-lobby', { players: room.players.map(playerData) });
+  });
+
   // ── Disconnect ──
   socket.on('disconnect', () => {
     const code = socket.roomCode;
+
+    // Handle Spyfall room disconnect
+    const sfRoom = sfRooms[code];
+    if (sfRoom) {
+      if (sfRoom.admin.id === socket.id) {
+        sfClearTimer(code);
+        sfClearAccusationTimer(code);
+        io.to(code).emit('room-closed');
+        sfRoom.players.forEach(p => { if (p.disconnectTimer) clearTimeout(p.disconnectTimer); });
+        delete sfRooms[code];
+        return;
+      }
+      const sfPlayer = sfRoom.players.find(p => p.id === socket.id);
+      if (sfPlayer) {
+        sfPlayer.disconnected = true;
+        sfPlayer.disconnectTimer = setTimeout(() => {
+          const r = sfRooms[code];
+          if (!r) return;
+          r.players = r.players.filter(p => p.id !== sfPlayer.id);
+          io.to(code).emit('sf-player-list', r.players.map(playerData));
+        }, 120000);
+        io.to(code).emit('sf-player-list', sfRoom.players.map(playerData));
+      }
+      return;
+    }
+
     const room = rooms[code];
     if (!room) return;
 
@@ -690,6 +985,130 @@ function showConsensusResults(code) {
       .map(p => ({ name: p.name, avatar: p.avatar, score: p.score }))
       .sort((a, b) => b.score - a.score),
   });
+}
+
+// ═══════════════════════════════
+// SPYFALL TIMERS & HELPERS
+// ═══════════════════════════════
+
+function sfStartTimer(code) {
+  const room = sfRooms[code];
+  if (!room) return;
+  sfClearTimer(code);
+  room.timer = setInterval(() => {
+    room.timeRemaining--;
+    const mins = Math.floor(room.timeRemaining / 60);
+    const secs = room.timeRemaining % 60;
+    const display = mins + ':' + String(secs).padStart(2, '0');
+    io.to(code).emit('sf-timer', { seconds: room.timeRemaining, display });
+    if (room.timeRemaining <= 0) {
+      sfClearTimer(code);
+      room.phase = 'results';
+      const spyPlayer = room.players.find(p => p.id === room.spyId);
+      io.to(code).emit('sf-game-over', {
+        spyId: room.spyId,
+        spyName: spyPlayer ? spyPlayer.name : '?',
+        spyAvatar: spyPlayer ? spyPlayer.avatar : '',
+        location: room.location,
+        winner: 'spy',
+        reason: 'Time ran out — the spy survived!',
+      });
+    }
+  }, 1000);
+}
+
+function sfClearTimer(code) {
+  const room = sfRooms[code];
+  if (room && room.timer) { clearInterval(room.timer); room.timer = null; }
+}
+
+function sfStartAccusationTimer(code, seconds) {
+  sfClearAccusationTimer(code);
+  let t = seconds;
+  SF_ACCUSATION_TIMERS[code] = setInterval(() => {
+    t--;
+    io.to(code).emit('sf-accusation-timer', t);
+    if (t <= 0) { sfClearAccusationTimer(code); sfResolveAccusation(code); }
+  }, 1000);
+}
+
+function sfClearAccusationTimer(code) {
+  if (SF_ACCUSATION_TIMERS[code]) { clearInterval(SF_ACCUSATION_TIMERS[code]); delete SF_ACCUSATION_TIMERS[code]; }
+}
+
+function sfResolveAccusation(code) {
+  const room = sfRooms[code];
+  if (!room) return;
+  const { accusation } = room;
+  const voters = room.players.filter(p => !p.disconnected);
+  const guiltyCount = Object.values(accusation.votes).filter(v => v === true).length;
+  const totalVoted = Object.keys(accusation.votes).length;
+  const guilty = guiltyCount > voters.length / 2;
+
+  if (guilty) {
+    const accusedIsSpy = accusation.accusedId === room.spyId;
+    if (accusedIsSpy) {
+      room.phase = 'spy-guess';
+      io.to(code).emit('sf-spy-caught', {
+        accusedId: accusation.accusedId,
+        accusedName: accusation.accusedName,
+        accusedAvatar: accusation.accusedAvatar,
+        guiltyCount,
+        totalVoted,
+        allLocations: SPYFALL_LOCATIONS.map(l => l.name),
+      });
+      // Give spy 30s to guess — use accusation timer slot
+      sfStartAccusationTimer(code, 30);
+      // Override: when this timer fires, players win
+      const orig = SF_ACCUSATION_TIMERS[code];
+      SF_ACCUSATION_TIMERS[code] = setInterval(() => {}, 0); // placeholder replaced above
+      // Reset properly
+      sfClearAccusationTimer(code);
+      let guessTime = 30;
+      SF_ACCUSATION_TIMERS[code] = setInterval(() => {
+        guessTime--;
+        io.to(code).emit('sf-accusation-timer', guessTime);
+        if (guessTime <= 0) {
+          sfClearAccusationTimer(code);
+          if (room.phase === 'spy-guess') {
+            room.phase = 'results';
+            const spyPlayer = room.players.find(p => p.id === room.spyId);
+            io.to(code).emit('sf-game-over', {
+              spyId: room.spyId,
+              spyName: spyPlayer ? spyPlayer.name : '?',
+              spyAvatar: spyPlayer ? spyPlayer.avatar : '',
+              location: room.location,
+              winner: 'players',
+              reason: 'The spy ran out of time to guess!',
+            });
+          }
+        }
+      }, 1000);
+    } else {
+      room.phase = 'results';
+      const spyPlayer = room.players.find(p => p.id === room.spyId);
+      io.to(code).emit('sf-game-over', {
+        spyId: room.spyId,
+        spyName: spyPlayer ? spyPlayer.name : '?',
+        spyAvatar: spyPlayer ? spyPlayer.avatar : '',
+        location: room.location,
+        winner: 'spy',
+        reason: `${accusation.accusedName} was innocent — the real spy goes free!`,
+        wrongAccused: accusation.accusedName,
+      });
+    }
+  } else {
+    // Not guilty — resume game
+    room.phase = 'playing';
+    room.accusation = null;
+    io.to(code).emit('sf-accusation-result', {
+      guilty: false,
+      accusedName: accusation.accusedName,
+      guiltyCount,
+      totalVoted,
+    });
+    sfStartTimer(code);
+  }
 }
 
 const PORT = process.env.PORT || 3000;

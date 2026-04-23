@@ -549,26 +549,27 @@ function handleUrlParams() {
   }
 }
 
-// ── Join Room ──
+// ── Join Room — defined here, overridden later to add Spyfall support ──
 function joinRoom() {
-  const code = document.getElementById('join-code').value.trim().toUpperCase();
-  const name = document.getElementById('join-name').value.trim();
-  const err = document.getElementById('join-error');
+  var code = document.getElementById('join-code').value.trim().toUpperCase();
+  var name = document.getElementById('join-name').value.trim();
+  var err = document.getElementById('join-error');
   err.textContent = '';
   if (!code || !name) { err.textContent = 'Enter both a room code and name.'; return; }
-  socket.emit('join-room', { code, name, avatar: selectedAvatar }, function(res) {
+  socket.emit('join-room', { code: code, name: name, avatar: selectedAvatar }, function(res) {
     if (res.success) {
-      roomCode = code;
-      // Store join info for auto-reconnect
       sessionStorage.setItem('vc_room', code);
       sessionStorage.setItem('vc_name', name);
       sessionStorage.setItem('vc_avatar', selectedAvatar);
-      document.getElementById('waiting-code').textContent = code;
-      if (res.reconnected) {
-        // Reconnected — server will send game state
-        return;
+      if (res.gameType === 'spyfall') {
+        sfRoomCode = code;
+        document.getElementById('sf-waiting-code').textContent = code;
+        showScreen('screen-sf-waiting');
+      } else {
+        roomCode = code;
+        document.getElementById('waiting-code').textContent = code;
+        if (!res.reconnected) showScreen('screen-waiting');
       }
-      showScreen('screen-waiting');
     } else {
       err.textContent = res.error;
     }
@@ -1157,6 +1158,449 @@ function escapeHtml(text) {
 // ── Enter key support ──
 document.getElementById('admin-name').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') createRoom();
+});
+
+// ═══════════════════════════════════════════════════════
+//  SPYFALL
+// ═══════════════════════════════════════════════════════
+
+var sfRoomCode = '';
+var isSfAdmin = false;
+var sfIsSpy = false;
+var sfMyRole = null;
+var sfMyLocation = null;
+var sfAllLocations = [];
+var sfRoleCountdown = null;
+var sfLocPanelOpen = false;
+var sfHasVoted = false;
+
+// ── Init SF avatar picker ──
+renderAvatarPicker('sf-create-avatar-picker');
+
+// ── Create Spyfall Room (host) ──
+function createSfRoom() {
+  var name = document.getElementById('sf-admin-name').value.trim();
+  if (!name) return;
+  var durRadio = document.querySelector('input[name="sf-duration"]:checked');
+  var duration = durRadio ? parseInt(durRadio.value) : 480;
+  socket.emit('create-sf-room', { name: name, avatar: selectedAvatar, gameDuration: duration }, function(res) {
+    if (res.success) {
+      isSfAdmin = true;
+      sfRoomCode = res.code;
+      localStorage.setItem('vc_host_name', name);
+      localStorage.setItem('vc_host_avatar', selectedAvatar);
+      document.getElementById('sf-lobby-code').textContent = sfRoomCode;
+      setSfJoinLink(sfRoomCode);
+      showScreen('screen-sf-lobby');
+      generateQR('sf-lobby-qr', sfRoomCode);
+    }
+  });
+}
+
+function setSfJoinLink(code) {
+  var link = window.location.origin + window.location.pathname + '?code=' + code;
+  document.getElementById('sf-join-link').value = link;
+}
+
+function copySfJoinLink() {
+  document.getElementById('sf-join-link').select();
+  document.execCommand('copy');
+  alert('Join link copied!');
+}
+
+// ── Host starts the Spyfall game ──
+function sfStartGame() {
+  var durRadio = document.querySelector('input[name="sf-lobby-dur"]:checked');
+  var duration = durRadio ? parseInt(durRadio.value) : 480;
+  socket.emit('sf-start-game', { duration: duration });
+}
+
+// ── Accuse modal ──
+function sfShowAccuseModal() {
+  var modal = document.getElementById('sf-accuse-modal');
+  var list = document.getElementById('sf-accuse-list');
+  var chips = document.querySelectorAll('#sf-game-players .sf-player-chip');
+  list.innerHTML = '';
+  chips.forEach(function(chip) {
+    var id = chip.dataset.id;
+    var name = chip.dataset.name;
+    var avatar = chip.dataset.avatar;
+    if (!id || id === socket.id) return;
+    var btn = document.createElement('button');
+    btn.className = 'btn sf-accuse-player-btn';
+    btn.innerHTML = '<span>' + avatar + '</span> ' + escapeHtml(name);
+    btn.addEventListener('click', function() {
+      sfCloseAccuseModal();
+      socket.emit('sf-call-accusation', id);
+    });
+    list.appendChild(btn);
+  });
+  modal.style.display = 'flex';
+}
+
+function sfCloseAccuseModal() {
+  document.getElementById('sf-accuse-modal').style.display = 'none';
+}
+
+// ── Spy guess modal ──
+function sfShowGuessModal() {
+  showScreen('screen-sf-spy-guess');
+  var list = document.getElementById('sf-guess-list');
+  list.innerHTML = '';
+  sfAllLocations.forEach(function(loc) {
+    var btn = document.createElement('button');
+    btn.className = 'btn sf-loc-guess-btn';
+    btn.textContent = loc;
+    btn.addEventListener('click', function() {
+      socket.emit('sf-spy-guess', loc);
+      document.querySelectorAll('.sf-loc-guess-btn').forEach(function(b) { b.disabled = true; });
+      btn.classList.add('selected');
+    });
+    list.appendChild(btn);
+  });
+}
+
+function sfRoleContinue() {
+  clearInterval(sfRoleCountdown);
+  sfEnterGame();
+}
+
+function sfEnterGame() {
+  if (isSfAdmin) {
+    showScreen('screen-sf-admin');
+  } else {
+    showScreen('screen-sf-game');
+  }
+}
+
+function sfSendChat() {
+  var input = document.getElementById('sf-chat-input');
+  var text = input.value.trim();
+  if (!text) return;
+  socket.emit('sf-send-chat', text);
+  input.value = '';
+}
+
+function sfVote(guilty) {
+  if (sfHasVoted) return;
+  sfHasVoted = true;
+  socket.emit('sf-accusation-vote', guilty);
+  document.getElementById('sf-acc-vote-buttons').style.display = 'none';
+  document.getElementById('sf-acc-voted-msg').style.display = 'block';
+}
+
+function sfHostEnd() {
+  if (confirm('End the game and reveal the spy?')) {
+    socket.emit('sf-end-game');
+  }
+}
+
+function toggleLocPanel() {
+  sfLocPanelOpen = !sfLocPanelOpen;
+  var list = document.getElementById('sf-loc-list');
+  var toggle = document.getElementById('sf-loc-toggle');
+  list.style.display = sfLocPanelOpen ? 'flex' : 'none';
+  toggle.textContent = sfLocPanelOpen ? '▲' : '▼';
+}
+
+function sfAppendChat(msg, feedId) {
+  var feed = document.getElementById(feedId || 'sf-chat-feed');
+  if (!feed) return;
+  var div = document.createElement('div');
+  div.className = 'sf-chat-msg' + (msg.senderId === socket.id ? ' sf-chat-mine' : '');
+  div.innerHTML =
+    '<span class="sf-chat-avatar">' + (msg.avatar || '') + '</span>' +
+    '<div class="sf-chat-bubble">' +
+      '<span class="sf-chat-name">' + escapeHtml(msg.name) + '</span>' +
+      '<span class="sf-chat-text">' + escapeHtml(msg.text) + '</span>' +
+    '</div>';
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function sfRenderPlayers(players, containerId) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = players.map(function(p) {
+    return '<div class="sf-player-chip player-chip" data-id="' + p.id + '" data-name="' + escapeHtml(p.name) + '" data-avatar="' + (p.avatar || '') + '">' +
+      '<span class="player-avatar">' + (p.avatar || '') + '</span> ' + escapeHtml(p.name) +
+    '</div>';
+  }).join('');
+}
+
+function sfShowResults(data) {
+  var banner = document.getElementById('sf-result-banner');
+  var spyEl = document.getElementById('sf-result-spy');
+  var locEl = document.getElementById('sf-result-location');
+  var reasonEl = document.getElementById('sf-result-reason');
+  var actionsEl = document.getElementById('sf-result-actions');
+
+  if (data.winner === 'spy') {
+    banner.innerHTML = '<div class="sf-banner sf-spy-wins">🕵️ SPY WINS!</div>';
+  } else if (data.winner === 'players') {
+    banner.innerHTML = '<div class="sf-banner sf-players-win">🎉 PLAYERS WIN!</div>';
+    launchConfetti();
+  } else {
+    banner.innerHTML = '<div class="sf-banner sf-revealed">🔎 REVEALED</div>';
+  }
+
+  spyEl.innerHTML = '<div class="sf-result-spy-card">' +
+    '<p class="sf-result-label">The spy was</p>' +
+    '<div class="sf-result-spy-name">' + (data.spyAvatar || '🕵️') + ' ' + escapeHtml(data.spyName) + '</div>' +
+  '</div>';
+
+  locEl.innerHTML = '<div class="sf-result-loc-card">' +
+    '<p class="sf-result-label">The location was</p>' +
+    '<div class="sf-result-loc-name">📍 ' + escapeHtml(data.location || '?') + '</div>' +
+    (data.locationGuess && data.locationGuess !== data.location ?
+      '<p class="sf-result-guess-wrong">Spy guessed: "' + escapeHtml(data.locationGuess) + '"</p>' : '') +
+  '</div>';
+
+  reasonEl.textContent = data.reason || '';
+
+  actionsEl.innerHTML =
+    (isSfAdmin ? '<button class="btn btn-spy" onclick="sfPlayAgain()">Play Again</button>' : '<p class="waiting-text">Waiting for host...</p>') +
+    '<button class="btn btn-secondary" style="margin-top:8px" onclick="location.reload()">Back to Home</button>';
+
+  showScreen('screen-sf-results');
+}
+
+function sfPlayAgain() {
+  socket.emit('sf-play-again');
+}
+
+// (joinRoom with Spyfall support is defined earlier in file)
+
+// ═══════════════════════════════
+// SPYFALL SOCKET EVENTS
+// ═══════════════════════════════
+
+socket.on('sf-player-list', function(players) {
+  sfRenderPlayers(players, 'sf-lobby-player-list');
+  sfRenderPlayers(players, 'sf-waiting-player-list');
+  sfRenderPlayers(players, 'sf-game-players');
+  var countEl = document.getElementById('sf-lobby-count');
+  if (countEl) countEl.textContent = '(' + players.length + ')';
+});
+
+socket.on('sf-role', function(data) {
+  sfIsSpy = data.isSpy;
+  sfMyRole = data.role;
+  sfMyLocation = data.location;
+  sfAllLocations = data.allLocations || [];
+
+  var card = document.getElementById('sf-role-card');
+  var hint = document.getElementById('sf-role-hint');
+
+  document.getElementById('sf-role-round').textContent = 'Round ' + data.round;
+
+  if (sfIsSpy) {
+    card.className = 'sf-role-card sf-spy-card';
+    card.innerHTML =
+      '<div class="sf-card-icon">🕵️</div>' +
+      '<div class="sf-card-title">YOU ARE THE SPY!</div>' +
+      '<p class="sf-card-sub">Blend in. Don\'t get caught.<br>If caught, guess the location to win.</p>';
+    hint.textContent = 'Listen carefully — figure out the location from their answers.';
+    // Show location panel button during game
+    sfLocPanelOpen = false;
+  } else {
+    card.className = 'sf-role-card sf-location-card';
+    card.innerHTML =
+      '<div class="sf-card-icon">📍</div>' +
+      '<div class="sf-card-location">' + escapeHtml(data.location) + '</div>' +
+      '<div class="sf-card-role">You are the <strong>' + escapeHtml(data.role) + '</strong></div>';
+    hint.textContent = 'Answer questions without revealing the location to the spy!';
+  }
+
+  // Auto-start countdown
+  var count = 8;
+  document.getElementById('sf-role-countdown').textContent = count;
+  document.getElementById('sf-role-auto').style.display = 'block';
+  clearInterval(sfRoleCountdown);
+  sfRoleCountdown = setInterval(function() {
+    count--;
+    var el = document.getElementById('sf-role-countdown');
+    if (el) el.textContent = count;
+    if (count <= 0) {
+      clearInterval(sfRoleCountdown);
+      sfEnterGame();
+    }
+  }, 1000);
+
+  showScreen('screen-sf-role');
+});
+
+socket.on('sf-admin-view', function(data) {
+  // Set up game timer display for admin
+  isSfAdmin = true;
+
+  var spyInfo = document.getElementById('sf-admin-spy-info');
+  var spy = data.players.find(function(p) { return p.isSpy; });
+  spyInfo.innerHTML =
+    '<div class="sf-admin-spy-row">' +
+      '<span class="sf-admin-label">🕵️ SPY:</span>' +
+      '<span class="sf-admin-spy-name">' + (spy ? (spy.avatar + ' ' + escapeHtml(spy.name)) : '?') + '</span>' +
+    '</div>' +
+    '<div class="sf-admin-spy-row">' +
+      '<span class="sf-admin-label">📍 LOCATION:</span>' +
+      '<span class="sf-admin-loc-name">' + escapeHtml(data.location) + '</span>' +
+    '</div>';
+
+  var rolesEl = document.getElementById('sf-admin-roles');
+  rolesEl.innerHTML = '<p class="sf-admin-roles-title">Player Roles</p>' +
+    data.players.map(function(p) {
+      return '<div class="sf-admin-role-row' + (p.isSpy ? ' sf-admin-spy-row-hl' : '') + '">' +
+        '<span>' + p.avatar + '</span>' +
+        '<span class="sf-admin-player-name">' + escapeHtml(p.name) + '</span>' +
+        '<span class="sf-admin-player-role">' + escapeHtml(p.role) + '</span>' +
+      '</div>';
+    }).join('');
+
+  document.getElementById('sf-admin-chat-feed').innerHTML = '';
+  document.getElementById('sf-host-end-btn').style.display = 'none'; // shown in admin screen
+  showScreen('screen-sf-role');
+  // Role screen will auto-enter admin game screen
+});
+
+socket.on('sf-timer', function(data) {
+  var el1 = document.getElementById('sf-game-timer');
+  var el2 = document.getElementById('sf-admin-timer');
+  if (el1) el1.textContent = data.display;
+  if (el2) el2.textContent = data.display;
+  // Low time warning
+  if (data.seconds <= 60) {
+    if (el1) el1.classList.add('sf-timer-low');
+    if (el2) el2.classList.add('sf-timer-low');
+  }
+});
+
+socket.on('sf-chat-message', function(msg) {
+  sfAppendChat(msg, 'sf-chat-feed');
+  sfAppendChat(msg, 'sf-admin-chat-feed');
+});
+
+socket.on('sf-accusation-called', function(data) {
+  sfHasVoted = false;
+  document.getElementById('sf-acc-text').textContent = data.accuserName + ' is accusing...';
+  document.getElementById('sf-acc-accused').innerHTML =
+    '<div class="sf-acc-avatar">' + (data.accusedAvatar || '👤') + '</div>' +
+    '<div class="sf-acc-name">' + escapeHtml(data.accusedName) + '</div>';
+  document.getElementById('sf-acc-vote-buttons').style.display = 'flex';
+  document.getElementById('sf-acc-voted-msg').style.display = 'none';
+  document.getElementById('sf-acc-count').textContent = '';
+  document.getElementById('sf-acc-timer').textContent = '30';
+  // Disable voting for the accused player
+  if (data.accusedId === socket.id) {
+    document.getElementById('sf-acc-vote-buttons').style.display = 'none';
+    document.getElementById('sf-acc-voted-msg').style.display = 'block';
+    document.getElementById('sf-acc-voted-msg').textContent = 'You cannot vote — you are the accused!';
+  }
+  showScreen('screen-sf-accusation');
+});
+
+socket.on('sf-accusation-timer', function(t) {
+  var el1 = document.getElementById('sf-acc-timer');
+  var el2 = document.getElementById('sf-guess-timer');
+  var el3 = document.getElementById('sf-cw-timer');
+  if (el1) el1.textContent = t + 's';
+  if (el2) el2.textContent = t;
+  if (el3) el3.textContent = t;
+});
+
+socket.on('sf-accusation-vote-count', function(data) {
+  var el = document.getElementById('sf-acc-count');
+  if (el) el.textContent = data.voted + ' / ' + data.total + ' voted';
+});
+
+socket.on('sf-accusation-result', function(data) {
+  // Not guilty — game resumes
+  alert('❌ Not Guilty! ' + data.accusedName + ' survives. Game continues...');
+  showScreen('screen-sf-game');
+});
+
+socket.on('sf-spy-caught', function(data) {
+  if (socket.id === data.accusedId) {
+    // This player IS the spy — show the guess screen
+    var list = document.getElementById('sf-guess-list');
+    list.innerHTML = '';
+    data.allLocations.forEach(function(loc) {
+      var btn = document.createElement('button');
+      btn.className = 'btn sf-loc-guess-btn';
+      btn.textContent = loc;
+      btn.addEventListener('click', function() {
+        socket.emit('sf-spy-guess', loc);
+        document.querySelectorAll('.sf-loc-guess-btn').forEach(function(b) { b.disabled = true; });
+        btn.classList.add('selected');
+      });
+      list.appendChild(btn);
+    });
+    showScreen('screen-sf-spy-guess');
+  } else {
+    // Non-spy — show waiting screen
+    var nameEl = document.getElementById('sf-caught-name');
+    var locEl = document.getElementById('sf-cw-location');
+    if (nameEl) nameEl.textContent = data.accusedAvatar + ' ' + data.accusedName + ' was caught!';
+    if (locEl && sfMyLocation) locEl.textContent = 'Can they guess "' + sfMyLocation + '"?';
+    showScreen('screen-sf-caught-wait');
+  }
+});
+
+socket.on('sf-game-over', function(data) {
+  sfShowResults(data);
+});
+
+socket.on('sf-back-to-lobby', function(data) {
+  sfRenderPlayers(data.players, 'sf-lobby-player-list');
+  sfRenderPlayers(data.players, 'sf-waiting-player-list');
+  var countEl = document.getElementById('sf-lobby-count');
+  if (countEl) countEl.textContent = '(' + data.players.length + ')';
+  if (isSfAdmin) {
+    showScreen('screen-sf-lobby');
+  } else {
+    showScreen('screen-sf-waiting');
+  }
+});
+
+// ── SF game screen enter actions (role → game) ──
+// Redefine sfEnterGame with full setup logic
+sfEnterGame = function() {
+  if (isSfAdmin) {
+    document.getElementById('sf-admin-chat-feed').innerHTML = '';
+    showScreen('screen-sf-admin');
+  } else {
+    // Set up player game screen
+    var badge = document.getElementById('sf-player-role-badge');
+    var locPanel = document.getElementById('sf-locations-panel');
+    var guessBtn = document.getElementById('sf-guess-btn');
+    var locList = document.getElementById('sf-loc-list');
+
+    if (sfIsSpy) {
+      badge.innerHTML = '<span class="sf-spy-badge">🕵️ YOU ARE THE SPY</span>';
+      badge.className = 'sf-role-badge sf-spy-badge-wrap';
+      guessBtn.style.display = 'inline-block';
+      locPanel.style.display = 'block';
+      locList.innerHTML = sfAllLocations.map(function(l) {
+        return '<span class="sf-loc-chip">' + escapeHtml(l) + '</span>';
+      }).join('');
+    } else {
+      badge.innerHTML = '📍 <strong>' + escapeHtml(sfMyLocation) + '</strong> &nbsp;·&nbsp; ' + escapeHtml(sfMyRole);
+      badge.className = 'sf-role-badge sf-loc-badge-wrap';
+      guessBtn.style.display = 'none';
+      locPanel.style.display = 'none';
+    }
+
+    document.getElementById('sf-chat-feed').innerHTML = '';
+    document.getElementById('sf-host-end-btn').style.display = 'none';
+    showScreen('screen-sf-game');
+  }
+};
+
+// ── Enter key for SF chat ──
+document.getElementById('sf-chat-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); sfSendChat(); }
+});
+document.getElementById('sf-admin-name').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') createSfRoom();
 });
 document.getElementById('join-name').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') joinRoom();
