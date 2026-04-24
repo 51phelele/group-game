@@ -1488,27 +1488,26 @@ h2 {
   background: rgba(247, 151, 30, 0.08);
 }
 
-.ha-avatar {
-  font-size: 1.3rem;
+.ha-num {
+  font-family: 'Fredoka One', cursive;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.3);
+  min-width: 24px;
   flex-shrink: 0;
-}
-
-.ha-content {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.ha-name {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.4);
-  font-weight: 700;
 }
 
 .ha-answer {
   font-size: 0.95rem;
   font-weight: 600;
   word-break: break-word;
+  flex: 1;
+}
+
+.ha-yours {
+  font-size: 0.75rem;
+  color: rgba(247, 151, 30, 0.7);
+  font-weight: 700;
+  font-style: italic;
 }
 
 /* ═══════════════════════════════

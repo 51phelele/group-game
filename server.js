@@ -165,13 +165,15 @@ function sendGameState(socket, room) {
   else if (qData.type === 'truefalse') payload.options = ['True', 'False'];
 
   if (room.phase === 'answering') {
-    // Send the question so they can still answer
+    // Send the question — they can still answer if time remains
     io.to(socket.id).emit('new-question', payload);
   } else if (room.phase === 'voting') {
-    // They missed answering but can see the voting screen
-    io.to(socket.id).emit('host-voting-view', { question: qData.question });
+    // Player reconnected mid-vote — show a holding screen, they'll join next round
+    io.to(socket.id).emit('rejoin-waiting', {
+      phase: 'voting',
+      questionsRemaining: room.questionQueue.length,
+    });
   } else if (room.phase === 'results' || room.phase === 'lobby') {
-    // Show waiting screen
     io.to(socket.id).emit('rejoin-waiting', {
       phase: room.phase,
       questionsRemaining: room.questionQueue.length,
@@ -301,7 +303,22 @@ io.on('connection', (socket) => {
       return callback({ success: false, error: 'Name already taken' });
     }
 
-    if (room.phase !== 'lobby') return callback({ success: false, error: 'Game already in progress' });
+    if (room.phase !== 'lobby') {
+      // Allow a player who was in this game to rejoin even after their grace period expired
+      const formerKey = name.toLowerCase();
+      const former = room.formerPlayers && room.formerPlayers[formerKey];
+      if (!former) return callback({ success: false, error: 'Game already in progress' });
+      // Restore them
+      delete room.formerPlayers[formerKey];
+      room.players.push({ id: socket.id, name: former.name, avatar: avatar || former.avatar, score: former.score });
+      socket.join(code);
+      socket.roomCode = code;
+      socket.playerName = former.name;
+      callback({ success: true, reconnected: true, score: former.score });
+      io.to(code).emit('player-list', getPlayers(room).map(playerData));
+      sendGameState(socket, room);
+      return;
+    }
 
     room.players.push({ id: socket.id, name, avatar: avatar || '🦊', score: 0 });
     socket.join(code);
@@ -379,7 +396,9 @@ io.on('connection', (socket) => {
     if (!room || room.admin.id !== socket.id) return;
     if (room.phase === 'answering' && room.currentQuestion.type === 'consensus') {
       clearTimer(socket.roomCode);
-      if (Object.keys(room.answers).length >= 2) {
+      const playerAnswerCount = Object.keys(room.answers).length;
+      const minNeeded = room.currentQuestion.hostAnswer ? 1 : 2;
+      if (playerAnswerCount >= minNeeded) {
         startVoting(socket.roomCode);
       } else {
         showConsensusResults(socket.roomCode);
@@ -661,9 +680,11 @@ io.on('connection', (socket) => {
 
     player.disconnected = true;
     player.disconnectTimer = setTimeout(() => {
-      // Permanently remove after grace period
+      // Permanently remove after grace period — but keep a record so they can rejoin
       const r = rooms[code];
       if (!r) return;
+      if (!r.formerPlayers) r.formerPlayers = {};
+      r.formerPlayers[player.name.toLowerCase()] = { name: player.name, avatar: player.avatar, score: player.score };
       r.players = r.players.filter(p => p.id !== player.id);
       io.to(code).emit('player-list', getPlayers(r).map(playerData));
     }, 120000); // 2 minute grace period
@@ -716,8 +737,11 @@ function handleAllAnswered(code) {
     // Kahoot-style: auto-grade against correct answer
     showOpenGradedResults(code);
   } else if (qType === 'consensus') {
-    // Voting-based: players vote for best answer
-    if (Object.keys(room.answers).length >= 2) {
+    // Voting-based: players vote for best answer.
+    // Host answer counts as one entry — only need 1 player answer to start voting when host has an answer.
+    const playerAnswerCount = Object.keys(room.answers).length;
+    const minNeeded = room.currentQuestion.hostAnswer ? 1 : 2;
+    if (playerAnswerCount >= minNeeded) {
       startVoting(code);
     } else {
       showConsensusResults(code);
@@ -743,11 +767,9 @@ function startVoting(code) {
     [answerList[i], answerList[j]] = [answerList[j], answerList[i]];
   }
 
-  // Send host the spectator voting view with all answers visible
+  // Send host the spectator voting view — answers only, no names (keeps voting blind)
   const hostAnswerList = answerList.map(a => ({
     answer: a.answer,
-    name: a.id === '__host__' ? room.admin.name : (room.answers[a.id] ? room.answers[a.id].name : ''),
-    avatar: a.id === '__host__' ? room.admin.avatar : (() => { const p = room.players.find(p => p.id === a.id); return p ? p.avatar : ''; })(),
     isHostAnswer: a.id === '__host__',
   }));
   io.to(room.admin.id).emit('host-voting-view', {

@@ -726,17 +726,14 @@ socket.on('host-voting-view', function(data) {
   document.getElementById('host-vote-question').textContent = data.question;
   document.getElementById('host-vote-count').textContent = '';
 
-  // Show all submitted answers so host can comment
+  // Show answers only — no names so host can't reveal who said what
   var display = document.getElementById('host-answers-display');
   if (data.answers && data.answers.length > 0) {
-    display.innerHTML = '<p class="ha-title">Submitted Answers:</p>' +
-      data.answers.map(function(a) {
+    display.innerHTML = '<p class="ha-title">Answers in play:</p>' +
+      data.answers.map(function(a, i) {
         return '<div class="ha-card' + (a.isHostAnswer ? ' ha-host' : '') + '">' +
-          '<span class="ha-avatar">' + (a.avatar || '') + '</span>' +
-          '<div class="ha-content">' +
-            '<span class="ha-name">' + escapeHtml(a.name) + (a.isHostAnswer ? ' (you)' : '') + '</span>' +
-            '<span class="ha-answer">' + escapeHtml(a.answer) + '</span>' +
-          '</div>' +
+          '<span class="ha-num">' + (i + 1) + '</span>' +
+          '<span class="ha-answer">' + escapeHtml(a.answer) + (a.isHostAnswer ? ' <span class="ha-yours">(yours)</span>' : '') + '</span>' +
         '</div>';
       }).join('');
   } else {
