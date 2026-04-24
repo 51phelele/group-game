@@ -244,6 +244,33 @@ function getSavedQuizzes() {
   return [];
 }
 
+// ── Server-side quiz persistence ──
+function loadQuizzesFromServer() {
+  fetch('/api/quizzes')
+    .then(function(r) { return r.json(); })
+    .then(function(serverQuizzes) {
+      if (!Array.isArray(serverQuizzes) || serverQuizzes.length === 0) return;
+      var local = getSavedQuizzes();
+      var localNames = local.map(function(q) { return q.name; });
+      var merged = local.slice();
+      serverQuizzes.forEach(function(sq) {
+        var idx = localNames.indexOf(sq.name);
+        if (idx === -1) {
+          merged.push(sq);
+        } else {
+          // prefer whichever was saved most recently
+          var localDate = new Date(local[idx].savedAt || 0);
+          var serverDate = new Date(sq.savedAt || 0);
+          if (serverDate > localDate) merged[idx] = sq;
+        }
+      });
+      saveSavedQuizzes(merged);
+      renderSavedQuizzes();
+      renderHomeSavedQuizzes();
+    })
+    .catch(function() { /* server unreachable — localStorage still works */ });
+}
+
 function getAllQuizzes() {
   var saved = getSavedQuizzes();
   // Merge defaults that aren't already saved (by name)
@@ -269,17 +296,27 @@ function saveCurrentQuiz() {
 
   var quizzes = getSavedQuizzes();
   var existing = quizzes.findIndex(function(q) { return q.name === name; });
+  var quizData = { name: name, questions: preloadedQuestions, savedAt: new Date().toISOString() };
+
   if (existing >= 0) {
     if (!confirm('A quiz named "' + name + '" already exists. Overwrite it?')) return;
-    quizzes[existing] = { name: name, questions: preloadedQuestions, savedAt: new Date().toISOString() };
+    quizzes[existing] = quizData;
   } else {
-    quizzes.push({ name: name, questions: preloadedQuestions, savedAt: new Date().toISOString() });
+    quizzes.push(quizData);
   }
 
   saveSavedQuizzes(quizzes);
   nameInput.value = '';
   renderSavedQuizzes();
   renderHomeSavedQuizzes();
+
+  // Persist to server so quizzes survive browser clears / new devices
+  fetch('/api/quizzes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(quizData)
+  }).catch(function() { /* server unreachable — localStorage still has it */ });
+
   alert('Quiz "' + name + '" saved!');
 }
 
@@ -306,6 +343,11 @@ function deleteSavedQuiz(index) {
   saveSavedQuizzes(quizzes);
   renderSavedQuizzes();
   renderHomeSavedQuizzes();
+
+  // Remove from server too
+  fetch('/api/quizzes/' + encodeURIComponent(quiz.name), {
+    method: 'DELETE'
+  }).catch(function() { /* server unreachable — removed from localStorage at least */ });
 }
 
 function renderSavedQuizzes() {
@@ -344,9 +386,11 @@ function renderSavedQuizzes() {
   }).join('');
 }
 
-// Init saved quizzes on page load
+// Init saved quizzes on page load — render from localStorage immediately,
+// then sync any quizzes stored on the server (survives browser clears / new devices)
 renderSavedQuizzes();
 renderHomeSavedQuizzes();
+loadQuizzesFromServer();
 
 // ── Home page — saved quizzes ──
 function renderHomeSavedQuizzes() {

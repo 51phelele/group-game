@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -9,6 +10,59 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+
+// ═══════════════════════════════
+// QUIZ PERSISTENCE (server-side)
+// ═══════════════════════════════
+
+const QUIZZES_FILE = path.join(__dirname, 'quizzes.json');
+
+function readQuizzes() {
+  try {
+    if (fs.existsSync(QUIZZES_FILE)) {
+      return JSON.parse(fs.readFileSync(QUIZZES_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Error reading quizzes.json:', e.message);
+  }
+  return [];
+}
+
+function writeQuizzes(quizzes) {
+  try {
+    fs.writeFileSync(QUIZZES_FILE, JSON.stringify(quizzes, null, 2));
+  } catch (e) {
+    console.error('Error writing quizzes.json:', e.message);
+  }
+}
+
+// GET  /api/quizzes         — return all saved quizzes
+app.get('/api/quizzes', (req, res) => {
+  res.json(readQuizzes());
+});
+
+// POST /api/quizzes         — create or overwrite a quiz by name
+app.post('/api/quizzes', (req, res) => {
+  const { name, questions } = req.body;
+  if (!name || !Array.isArray(questions)) {
+    return res.status(400).json({ error: 'name and questions required' });
+  }
+  const quizzes = readQuizzes();
+  const idx = quizzes.findIndex(q => q.name === name);
+  const quiz = { name, questions, savedAt: new Date().toISOString() };
+  if (idx >= 0) quizzes[idx] = quiz;
+  else quizzes.push(quiz);
+  writeQuizzes(quizzes);
+  res.json({ success: true });
+});
+
+// DELETE /api/quizzes/:name — remove a quiz by name
+app.delete('/api/quizzes/:name', (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const quizzes = readQuizzes().filter(q => q.name !== name);
+  writeQuizzes(quizzes);
+  res.json({ success: true });
+});
 
 // ── AI Quiz Generation ──
 app.post('/api/generate-quiz', async (req, res) => {
