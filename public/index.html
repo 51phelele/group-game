@@ -33,6 +33,19 @@
             <button class="btn btn-secondary btn-small" onclick="showScreen('screen-join')">Join Room</button>
           </div>
         </div>
+        <div class="seq-home-card">
+          <div class="seq-home-header">
+            <span class="seq-home-icon">🃏</span>
+            <div>
+              <div class="seq-home-title">Sequence</div>
+              <div class="seq-home-desc">Build 5 in a row to win</div>
+            </div>
+          </div>
+          <div class="seq-home-buttons">
+            <button class="btn btn-seq btn-small" onclick="showScreen('screen-seq-create')">Create Room</button>
+            <button class="btn btn-secondary btn-small" onclick="showScreen('screen-join')">Join Room</button>
+          </div>
+        </div>
         <div id="home-saved-section" class="home-saved-section" style="display:none">
           <h3 class="home-section-title">My Quizzes</h3>
           <div id="home-saved-list" class="home-saved-list"></div>
@@ -564,6 +577,121 @@
         <div class="sf-action-bar">
           <button class="btn btn-small btn-secondary" onclick="sfHostEnd()">⏹ End Game</button>
         </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════ -->
+    <!-- SEQUENCE SCREENS                      -->
+    <!-- ════════════════════════════════════ -->
+
+    <!-- SEQ CREATE (host) -->
+    <div id="screen-seq-create" class="screen">
+      <div class="card">
+        <div class="seq-logo">🃏 SEQUENCE</div>
+        <p class="tagline">Build 5 in a row to win</p>
+        <input type="text" id="seq-admin-name" placeholder="Your name" maxlength="20" autocomplete="off">
+        <p class="avatar-label">Pick your avatar</p>
+        <div id="seq-create-avatar-picker" class="avatar-picker"></div>
+        <div class="time-selector" style="justify-content:center;margin-bottom:16px">
+          <span class="time-label">Mode:</span>
+          <div class="time-pills">
+            <label class="time-pill"><input type="radio" name="seq-mode" value="ffa" checked><span>Free-for-All</span></label>
+            <label class="time-pill"><input type="radio" name="seq-mode" value="2team"><span>2 Teams</span></label>
+          </div>
+        </div>
+        <button class="btn btn-seq" onclick="createSeqRoom()">Create Sequence Room</button>
+        <button class="btn btn-back" onclick="showScreen('screen-home')">Back</button>
+      </div>
+    </div>
+
+    <!-- SEQ LOBBY (host waits for players) -->
+    <div id="screen-seq-lobby" class="screen">
+      <div class="card wide">
+        <div class="seq-logo" style="font-size:1.6rem;margin-bottom:4px">🃏 SEQUENCE</div>
+        <div class="room-code-display">
+          <span class="label">Room Code</span>
+          <span class="code" id="seq-lobby-code"></span>
+          <div id="seq-lobby-qr" class="qr-container"></div>
+          <span class="qr-hint">Scan to join</span>
+          <div class="join-link-section">
+            <p class="label">Or share this link:</p>
+            <div class="link-container">
+              <input type="text" id="seq-join-link" readonly class="join-link-input">
+              <button class="btn btn-small" onclick="copySeqJoinLink()">Copy</button>
+            </div>
+          </div>
+        </div>
+        <h2>Players <span id="seq-lobby-count" style="font-size:1rem;color:rgba(255,255,255,0.4)"></span></h2>
+        <div id="seq-lobby-player-list" class="player-list"></div>
+        <p id="seq-lobby-mode-display" class="status" style="margin-bottom:12px"></p>
+        <button class="btn btn-seq btn-glow" id="seq-start-btn" onclick="seqStartGame()">Start Game</button>
+        <p id="seq-start-error" class="error"></p>
+      </div>
+    </div>
+
+    <!-- SEQ WAITING (player waits for host) -->
+    <div id="screen-seq-waiting" class="screen">
+      <div class="card wide">
+        <div class="seq-logo" style="font-size:1.6rem;margin-bottom:4px">🃏 SEQUENCE</div>
+        <div class="room-code-display">
+          <span class="label">Room Code</span>
+          <span class="code" id="seq-waiting-code"></span>
+        </div>
+        <h2>Players</h2>
+        <div id="seq-waiting-player-list" class="player-list"></div>
+        <p class="waiting-text">Waiting for the host to start...</p>
+      </div>
+    </div>
+
+    <!-- SEQ GAME — PLAYER VIEW -->
+    <div id="screen-seq-game" class="screen seq-game-screen">
+      <div class="seq-game-layout">
+        <div class="seq-top-bar">
+          <div id="seq-turn-info" class="seq-turn-info"></div>
+          <div id="seq-seq-counts" class="seq-seq-counts"></div>
+        </div>
+        <div id="seq-dead-bar" class="seq-dead-bar" style="display:none">
+          <button class="btn btn-secondary btn-small" onclick="seqDeclareDeadCard()">🗑 Dead Card</button>
+          <span class="seq-dead-hint">All spots for selected card are taken by your team</span>
+        </div>
+        <div class="seq-board-scroll">
+          <div id="seq-player-board" class="seq-board"></div>
+        </div>
+        <div id="seq-hand-area" class="seq-hand-area">
+          <div class="seq-hand-label">YOUR HAND</div>
+          <div id="seq-hand" class="seq-hand"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEQ ADMIN — HOST VIEW -->
+    <div id="screen-seq-admin" class="screen seq-game-screen">
+      <div class="seq-admin-layout">
+        <div class="seq-admin-top">
+          <div class="seq-logo" style="font-size:1.2rem;margin:0">🃏 SEQUENCE</div>
+          <div id="seq-admin-turn-info" class="seq-admin-turn-info"></div>
+          <button class="btn btn-secondary btn-small" onclick="seqHostEnd()">⏹ End Game</button>
+        </div>
+        <div class="seq-admin-content">
+          <div class="seq-board-scroll seq-admin-board-scroll">
+            <div id="seq-admin-board" class="seq-board seq-admin-board"></div>
+          </div>
+          <div id="seq-admin-panel" class="seq-admin-panel">
+            <div id="seq-admin-seq-counts" class="seq-admin-seq-counts"></div>
+            <div id="seq-admin-players" class="seq-admin-players"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEQ RESULTS -->
+    <div id="screen-seq-results" class="screen">
+      <div id="seq-confetti"></div>
+      <div class="card wide">
+        <div id="seq-result-banner" class="seq-result-banner"></div>
+        <div id="seq-result-counts" class="seq-result-counts"></div>
+        <div id="seq-result-players" class="seq-result-players"></div>
+        <div id="seq-result-actions" class="seq-result-actions"></div>
       </div>
     </div>
 

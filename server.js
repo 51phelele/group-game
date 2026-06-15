@@ -140,6 +140,7 @@ Rules:
 
 const rooms = {};
 const sfRooms = {};
+const seqRooms = {};
 const SF_ACCUSATION_TIMERS = {};
 
 // ── Spyfall Locations ──
@@ -182,7 +183,7 @@ function generateRoomCode() {
   do {
     code = '';
     for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  } while (rooms[code] || sfRooms[code]);
+  } while (rooms[code] || sfRooms[code] || seqRooms[code]);
   return code;
 }
 
@@ -327,6 +328,35 @@ io.on('connection', (socket) => {
         socket.playerName = name;
         callback({ success: true, gameType: 'spyfall' });
         io.to(code).emit('sf-player-list', sfRoom.players.map(playerData));
+        return;
+      }
+      // ── Check if it's a Sequence room ──
+      const seqRoom = seqRooms[code];
+      if (seqRoom) {
+        if (seqRoom.phase !== 'lobby') return callback({ success: false, error: 'Game already in progress' });
+        const existingSeq = seqRoom.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+        if (existingSeq) {
+          if (existingSeq.disconnected) {
+            clearTimeout(existingSeq.disconnectTimer);
+            existingSeq.id = socket.id;
+            existingSeq.avatar = avatar || existingSeq.avatar;
+            existingSeq.disconnected = false;
+            delete existingSeq.disconnectTimer;
+            socket.join(code);
+            socket.roomCode = code;
+            socket.playerName = name;
+            callback({ success: true, reconnected: true, gameType: 'sequence' });
+            io.to(code).emit('seq-player-list', seqRoom.players.map(playerData));
+            return;
+          }
+          return callback({ success: false, error: 'Name already taken' });
+        }
+        seqRoom.players.push({ id: socket.id, name, avatar: avatar || '🦊', score: 0 });
+        socket.join(code);
+        socket.roomCode = code;
+        socket.playerName = name;
+        callback({ success: true, gameType: 'sequence' });
+        io.to(code).emit('seq-player-list', seqRoom.players.map(playerData));
         return;
       }
       return callback({ success: false, error: 'Room not found' });
@@ -687,9 +717,450 @@ io.on('connection', (socket) => {
     io.to(code).emit('sf-back-to-lobby', { players: room.players.map(playerData) });
   });
 
+  // ══════════════════════════════════════════
+  // SEQUENCE GAME
+  // ══════════════════════════════════════════
+
+  const SEQ_BOARD_LAYOUT = [
+    ['FR','2S','3S','4S','5S','6S','7S','8S','9S','FR'],
+    ['10S','QS','KS','AS','2H','3H','4H','5H','6H','7H'],
+    ['8H','9H','10H','QH','KH','AH','2D','3D','4D','5D'],
+    ['6D','7D','8D','9D','10D','QD','KD','AD','2C','3C'],
+    ['4C','5C','6C','7C','8C','9C','10C','QC','KC','AC'],
+    ['AC','KC','QC','10C','9C','8C','7C','6C','5C','4C'],
+    ['3C','2C','AD','KD','QD','10D','9D','8D','7D','6D'],
+    ['5D','4D','3D','2D','AH','KH','QH','10H','9H','8H'],
+    ['7H','6H','5H','4H','3H','2H','AS','KS','QS','10S'],
+    ['FR','9S','8S','7S','6S','5S','4S','3S','2S','FR'],
+  ];
+
+  function createSeqBoard() {
+    return SEQ_BOARD_LAYOUT.map(row =>
+      row.map(card => ({ card, chip: null, sequenced: false }))
+    );
+  }
+
+  function createSeqDeck() {
+    const suits = ['S','H','D','C'];
+    const ranks = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+    const deck = [];
+    for (let d = 0; d < 2; d++) {
+      for (const suit of suits) {
+        for (const rank of ranks) {
+          deck.push(rank + suit);
+        }
+      }
+    }
+    // Shuffle
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+  }
+
+  function getSeqHandSize(n) {
+    if (n <= 2) return 7;
+    if (n <= 4) return 6;
+    if (n <= 6) return 5;
+    if (n <= 8) return 4;
+    return 3;
+  }
+
+  function isOneEyedJack(c) {
+    return c === 'JH' || c === 'JS';
+  }
+
+  function isTwoEyedJack(c) {
+    return c === 'JD' || c === 'JC';
+  }
+
+  function getSeqTeam(room, playerId) {
+    const p = room.seqPlayers.find(sp => sp.id === playerId);
+    return p ? p.teamIdx : -1;
+  }
+
+  function getSeqPositions(card) {
+    const positions = [];
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        if (SEQ_BOARD_LAYOUT[r][c] === card) {
+          positions.push({ r, c });
+        }
+      }
+    }
+    return positions;
+  }
+
+  function seqBoardState(board) {
+    return board.map(row => row.map(cell => ({
+      card: cell.card,
+      chip: cell.chip,
+      sequenced: cell.sequenced,
+    })));
+  }
+
+  function findAllSequences(board) {
+    const directions = [[0,1],[1,0],[1,1],[1,-1]];
+    const seqs = new Map();
+
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        for (const [dr, dc] of directions) {
+          // Try to find a sequence starting at (r,c) in direction (dr,dc)
+          const cells = [];
+          let teamIdx = -1;
+          for (let k = 0; k < 5; k++) {
+            const nr = r + dr * k;
+            const nc = c + dc * k;
+            if (nr < 0 || nr >= 10 || nc < 0 || nc >= 10) break;
+            const cell = board[nr][nc];
+            if (cell.card === 'FR') {
+              // FR is wild — accept any team, just add to cells
+              cells.push([nr, nc]);
+              continue;
+            }
+            if (cell.chip === null) break;
+            if (teamIdx === -1) {
+              teamIdx = cell.chip;
+            } else if (cell.chip !== teamIdx) {
+              break;
+            }
+            cells.push([nr, nc]);
+          }
+          if (cells.length === 5 && teamIdx !== -1) {
+            const hash = cells.map(([cr,cc]) => cr+','+cc).join('|');
+            if (!seqs.has(hash)) {
+              seqs.set(hash, { teamIdx, cells });
+            }
+          }
+        }
+      }
+    }
+    return seqs;
+  }
+
+  // ── Create Sequence Room ──
+  socket.on('create-seq-room', (data, callback) => {
+    const { name, avatar, mode } = data;
+    const code = generateRoomCode();
+    seqRooms[code] = {
+      admin: { id: socket.id, name, avatar: avatar || '🦊' },
+      players: [],
+      phase: 'lobby',
+      mode: mode || 'ffa',
+      board: null,
+      deck: [],
+      hands: {},
+      seqPlayers: [],
+      turnIdx: 0,
+      seqCounts: [],
+      seqHashes: new Set(),
+      seqCells: [],
+      teamNames: [],
+    };
+    socket.join(code);
+    socket.roomCode = code;
+    socket.playerName = name;
+    callback({ success: true, code });
+  });
+
+  // ── Start Sequence Game ──
+  socket.on('seq-start-game', () => {
+    const code = socket.roomCode;
+    const room = seqRooms[code];
+    if (!room || room.admin.id !== socket.id) return;
+    const activePlayers = room.players.filter(p => !p.disconnected);
+    if (activePlayers.length < 2) {
+      io.to(socket.id).emit('seq-error', { message: 'Need at least 2 players!' });
+      return;
+    }
+
+    room.board = createSeqBoard();
+    room.deck = createSeqDeck();
+    room.phase = 'playing';
+    room.turnIdx = 0;
+    room.seqCounts = [];
+    room.seqHashes = new Set();
+    room.seqCells = [];
+
+    // Assign teams
+    const n = activePlayers.length;
+    const mode = room.mode;
+
+    if (mode === 'ffa') {
+      // Each player is their own team
+      room.seqPlayers = activePlayers.map((p, i) => ({ id: p.id, name: p.name, avatar: p.avatar, teamIdx: i }));
+      room.teamNames = activePlayers.map(p => p.name);
+      room.seqCounts = activePlayers.map(() => 0);
+    } else {
+      // 2-team mode: alternate assignment
+      room.seqPlayers = activePlayers.map((p, i) => ({ id: p.id, name: p.name, avatar: p.avatar, teamIdx: i % 2 }));
+      room.teamNames = ['Team Red', 'Team Blue'];
+      room.seqCounts = [0, 0];
+    }
+
+    // Deal hands
+    const handSize = getSeqHandSize(n);
+    room.hands = {};
+    for (const sp of room.seqPlayers) {
+      room.hands[sp.id] = room.deck.splice(0, handSize);
+    }
+
+    const boardState = seqBoardState(room.board);
+    const turnPlayerId = room.seqPlayers[room.turnIdx].id;
+
+    // Emit to each player
+    for (const sp of room.seqPlayers) {
+      io.to(sp.id).emit('seq-game-start', {
+        board: boardState,
+        hand: room.hands[sp.id],
+        myTeam: sp.teamIdx,
+        teamNames: room.teamNames,
+        players: room.seqPlayers.map(s => ({ id: s.id, name: s.name, avatar: s.avatar, teamIdx: s.teamIdx })),
+        turnPlayerId,
+        seqCounts: room.seqCounts,
+        mode: room.mode,
+      });
+    }
+
+    // Emit to admin/host
+    io.to(room.admin.id).emit('seq-admin-start', {
+      board: boardState,
+      players: room.seqPlayers.map(s => ({ id: s.id, name: s.name, avatar: s.avatar, teamIdx: s.teamIdx })),
+      teamNames: room.teamNames,
+      turnPlayerId,
+      seqCounts: room.seqCounts,
+      mode: room.mode,
+    });
+  });
+
+  // ── Play a card (normal or two-eyed Jack) ──
+  socket.on('seq-play-card', ({ card, row, col }) => {
+    const code = socket.roomCode;
+    const room = seqRooms[code];
+    if (!room || room.phase !== 'playing') return;
+
+    const sp = room.seqPlayers.find(p => p.id === socket.id);
+    if (!sp) return;
+    if (room.seqPlayers[room.turnIdx].id !== socket.id) return;
+
+    const hand = room.hands[socket.id];
+    const cardIdx = hand.indexOf(card);
+    if (cardIdx === -1) return;
+
+    const cell = room.board[row][col];
+    if (cell.card === 'FR') return; // can't place on free corner directly
+    if (cell.chip !== null) return; // occupied
+
+    if (isTwoEyedJack(card)) {
+      // Wild — can go anywhere empty (non-FR handled above)
+    } else if (!isOneEyedJack(card)) {
+      // Normal card — must match board position
+      if (cell.card !== card) return;
+    } else {
+      return; // one-eyed jack should use seq-remove-chip
+    }
+
+    // Place chip
+    cell.chip = sp.teamIdx;
+
+    // Remove card from hand, draw replacement
+    hand.splice(cardIdx, 1);
+    if (room.deck.length > 0) {
+      hand.push(room.deck.shift());
+    }
+
+    // Detect new sequences
+    const allSeqs = findAllSequences(room.board);
+    let newSeqFound = false;
+    let winner = -1;
+
+    for (const [hash, seqData] of allSeqs) {
+      if (!room.seqHashes.has(hash)) {
+        room.seqHashes.add(hash);
+        room.seqCounts[seqData.teamIdx]++;
+        room.seqCells.push({ hash, teamIdx: seqData.teamIdx, cells: seqData.cells });
+        newSeqFound = true;
+        // Mark cells as sequenced
+        for (const [cr, cc] of seqData.cells) {
+          room.board[cr][cc].sequenced = true;
+        }
+        if (room.seqCounts[seqData.teamIdx] >= 2) {
+          winner = seqData.teamIdx;
+        }
+      }
+    }
+
+    // Advance turn
+    room.turnIdx = (room.turnIdx + 1) % room.seqPlayers.length;
+    const nextTurnPlayerId = room.seqPlayers[room.turnIdx].id;
+
+    const boardState = seqBoardState(room.board);
+
+    if (winner >= 0) {
+      room.phase = 'gameover';
+      const winnerName = room.teamNames[winner];
+      io.to(code).emit('seq-game-over', {
+        board: boardState,
+        winnerTeamIdx: winner,
+        winnerName,
+        seqCounts: room.seqCounts,
+        seqCells: room.seqCells,
+        teamNames: room.teamNames,
+        players: room.seqPlayers,
+      });
+    } else {
+      io.to(code).emit('seq-board-update', {
+        board: boardState,
+        turnPlayerId: nextTurnPlayerId,
+        seqCounts: room.seqCounts,
+        seqCells: room.seqCells,
+        lastPlay: { playerId: socket.id, playerName: sp.name, card, row, col, teamIdx: sp.teamIdx },
+      });
+      io.to(socket.id).emit('seq-hand-update', { hand: room.hands[socket.id] });
+    }
+  });
+
+  // ── Remove a chip (one-eyed Jack) ──
+  socket.on('seq-remove-chip', ({ card, row, col }) => {
+    const code = socket.roomCode;
+    const room = seqRooms[code];
+    if (!room || room.phase !== 'playing') return;
+
+    const sp = room.seqPlayers.find(p => p.id === socket.id);
+    if (!sp) return;
+    if (room.seqPlayers[room.turnIdx].id !== socket.id) return;
+
+    if (!isOneEyedJack(card)) return;
+
+    const hand = room.hands[socket.id];
+    const cardIdx = hand.indexOf(card);
+    if (cardIdx === -1) return;
+
+    const cell = room.board[row][col];
+    if (cell.chip === null) return; // no chip to remove
+    if (cell.chip === sp.teamIdx) return; // can't remove own chip
+    if (cell.sequenced) return; // can't remove sequenced chip
+    if (cell.card === 'FR') return; // can't remove from free corner
+
+    // Remove chip
+    cell.chip = null;
+
+    // Remove card from hand, draw replacement
+    hand.splice(cardIdx, 1);
+    if (room.deck.length > 0) {
+      hand.push(room.deck.shift());
+    }
+
+    // Advance turn
+    room.turnIdx = (room.turnIdx + 1) % room.seqPlayers.length;
+    const nextTurnPlayerId = room.seqPlayers[room.turnIdx].id;
+
+    const boardState = seqBoardState(room.board);
+
+    io.to(code).emit('seq-board-update', {
+      board: boardState,
+      turnPlayerId: nextTurnPlayerId,
+      seqCounts: room.seqCounts,
+      seqCells: room.seqCells,
+      lastPlay: { playerId: socket.id, playerName: sp.name, card, row, col, teamIdx: sp.teamIdx, removed: true },
+    });
+    io.to(socket.id).emit('seq-hand-update', { hand: room.hands[socket.id] });
+  });
+
+  // ── Declare dead card ──
+  socket.on('seq-declare-dead', ({ card }) => {
+    const code = socket.roomCode;
+    const room = seqRooms[code];
+    if (!room || room.phase !== 'playing') return;
+
+    const sp = room.seqPlayers.find(p => p.id === socket.id);
+    if (!sp) return;
+    if (room.seqPlayers[room.turnIdx].id !== socket.id) return;
+
+    const hand = room.hands[socket.id];
+    const cardIdx = hand.indexOf(card);
+    if (cardIdx === -1) return;
+
+    // Verify it's actually dead: all positions for this card are occupied by own team
+    if (!isOneEyedJack(card) && !isTwoEyedJack(card)) {
+      const positions = getSeqPositions(card);
+      const allOccupied = positions.every(({ r, c }) => room.board[r][c].chip === sp.teamIdx);
+      if (!allOccupied) return; // not actually dead
+    }
+
+    // Discard and draw — no turn advancement (same turn continues without penalty)
+    hand.splice(cardIdx, 1);
+    if (room.deck.length > 0) {
+      hand.push(room.deck.shift());
+    }
+
+    io.to(socket.id).emit('seq-hand-update', { hand: room.hands[socket.id] });
+    io.to(code).emit('seq-dead-card', { playerName: sp.name, card });
+  });
+
+  // ── Play again (back to lobby) ──
+  socket.on('seq-play-again', () => {
+    const code = socket.roomCode;
+    const room = seqRooms[code];
+    if (!room || room.admin.id !== socket.id) return;
+    room.phase = 'lobby';
+    room.board = null;
+    room.deck = [];
+    room.hands = {};
+    room.seqPlayers = [];
+    room.turnIdx = 0;
+    room.seqCounts = [];
+    room.seqHashes = new Set();
+    room.seqCells = [];
+    io.to(code).emit('seq-back-to-lobby', { players: room.players.map(playerData) });
+  });
+
+  // ── Host ends game early ──
+  socket.on('seq-end-game', () => {
+    const code = socket.roomCode;
+    const room = seqRooms[code];
+    if (!room || room.admin.id !== socket.id) return;
+    room.phase = 'gameover';
+    io.to(code).emit('seq-game-over', {
+      board: room.board ? seqBoardState(room.board) : null,
+      winnerTeamIdx: -1,
+      winnerName: 'No winner',
+      seqCounts: room.seqCounts,
+      seqCells: room.seqCells,
+      teamNames: room.teamNames,
+      players: room.seqPlayers,
+      hostEnded: true,
+    });
+  });
+
   // ── Disconnect ──
   socket.on('disconnect', () => {
     const code = socket.roomCode;
+
+    // Handle Sequence room disconnect
+    const seqRoomDC = seqRooms[code];
+    if (seqRoomDC) {
+      if (seqRoomDC.admin && seqRoomDC.admin.id === socket.id) {
+        io.to(code).emit('room-closed');
+        seqRoomDC.players.forEach(p => { if (p.disconnectTimer) clearTimeout(p.disconnectTimer); });
+        delete seqRooms[code];
+        return;
+      }
+      const seqPlayerDC = seqRoomDC.players.find(p => p.id === socket.id);
+      if (seqPlayerDC) {
+        seqPlayerDC.disconnected = true;
+        seqPlayerDC.disconnectTimer = setTimeout(() => {
+          const r = seqRooms[code];
+          if (!r) return;
+          r.players = r.players.filter(p => p.id !== seqPlayerDC.id);
+          io.to(code).emit('seq-player-list', r.players.map(playerData));
+        }, 120000);
+        io.to(code).emit('seq-player-list', seqRoomDC.players.map(playerData));
+      }
+      return;
+    }
 
     // Handle Spyfall room disconnect
     const sfRoom = sfRooms[code];

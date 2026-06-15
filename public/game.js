@@ -609,6 +609,10 @@ function joinRoom() {
         sfRoomCode = code;
         document.getElementById('sf-waiting-code').textContent = code;
         showScreen('screen-sf-waiting');
+      } else if (res.gameType === 'sequence') {
+        seqRoomCode = code;
+        document.getElementById('seq-waiting-code').textContent = code;
+        showScreen('screen-seq-waiting');
       } else {
         roomCode = code;
         document.getElementById('waiting-code').textContent = code;
@@ -1663,4 +1667,605 @@ document.getElementById('setup-a-consensus').addEventListener('keydown', functio
 });
 document.getElementById('setup-q-tf').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') { e.preventDefault(); addPreloadedQuestion(); }
+});
+
+// ═══════════════════════════════════════════════════════
+//  SEQUENCE
+// ═══════════════════════════════════════════════════════
+
+var seqRoomCode = '';
+var isSeqAdmin = false;
+var seqBoard = null;
+var seqHand = [];
+var seqSelectedCard = null;
+var seqSelectedCardIdx = -1;
+var seqTurnPlayerId = '';
+var seqMyTeam = -1;
+var seqPlayerTeams = [];
+var seqTeamNames = [];
+var seqSeqCounts = [];
+var seqSeqCells = [];
+var seqMode = 'ffa';
+var seqJackMode = null; // null | 'one-eyed' | 'two-eyed'
+
+// Team colors (matching CSS)
+var SEQ_TEAM_COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c'];
+
+// Suit symbol helpers
+function seqSuitSymbol(suit) {
+  var map = { S: '♠', H: '♥', D: '♦', C: '♣' };
+  return map[suit] || suit;
+}
+
+function seqSuitIsRed(suit) {
+  return suit === 'H' || suit === 'D';
+}
+
+function seqParseCard(card) {
+  if (!card || card === 'FR') return { rank: 'FR', suit: '', red: false };
+  var suit = card[card.length - 1];
+  var rank = card.slice(0, card.length - 1);
+  return { rank: rank, suit: suit, red: seqSuitIsRed(suit) };
+}
+
+function seqIsOneEyedJack(card) {
+  return card === 'JH' || card === 'JS';
+}
+
+function seqIsTwoEyedJack(card) {
+  return card === 'JD' || card === 'JC';
+}
+
+// ── Init avatar picker ──
+renderAvatarPicker('seq-create-avatar-picker');
+
+// ── Create Sequence Room ──
+function createSeqRoom() {
+  var name = document.getElementById('seq-admin-name').value.trim();
+  if (!name) return;
+  var modeRadio = document.querySelector('input[name="seq-mode"]:checked');
+  var mode = modeRadio ? modeRadio.value : 'ffa';
+  socket.emit('create-seq-room', { name: name, avatar: selectedAvatar, mode: mode }, function(res) {
+    if (res.success) {
+      isSeqAdmin = true;
+      seqRoomCode = res.code;
+      seqMode = mode;
+      localStorage.setItem('vc_host_name', name);
+      localStorage.setItem('vc_host_avatar', selectedAvatar);
+      document.getElementById('seq-lobby-code').textContent = seqRoomCode;
+      document.getElementById('seq-lobby-mode-display').textContent = mode === 'ffa' ? 'Mode: Free-for-All' : 'Mode: 2 Teams';
+      setSeqJoinLink(seqRoomCode);
+      showScreen('screen-seq-lobby');
+      generateQR('seq-lobby-qr', seqRoomCode);
+    }
+  });
+}
+
+function setSeqJoinLink(code) {
+  var link = window.location.origin + window.location.pathname + '?code=' + code;
+  var el = document.getElementById('seq-join-link');
+  if (el) el.value = link;
+}
+
+function copySeqJoinLink() {
+  var el = document.getElementById('seq-join-link');
+  if (el) { el.select(); document.execCommand('copy'); alert('Join link copied!'); }
+}
+
+// ── Host starts the Sequence game ──
+function seqStartGame() {
+  socket.emit('seq-start-game');
+}
+
+// ── seqCardDisplay: returns HTML for a card ──
+function seqCardDisplay(card) {
+  if (!card || card === 'FR') return '<span class="seq-free-star">⭐</span>';
+  var p = seqParseCard(card);
+  var redClass = p.red ? ' red' : '';
+  if (seqIsOneEyedJack(card)) {
+    return '<span class="seq-hand-card-rank' + redClass + '">J</span>' +
+           '<span class="seq-hand-card-suit' + redClass + '">' + seqSuitSymbol(p.suit) + '</span>' +
+           '<span class="seq-hand-card-label">Remove</span>';
+  }
+  if (seqIsTwoEyedJack(card)) {
+    return '<span class="seq-hand-card-rank' + redClass + '">J</span>' +
+           '<span class="seq-hand-card-suit' + redClass + '">' + seqSuitSymbol(p.suit) + '</span>' +
+           '<span class="seq-hand-card-label">Wild</span>';
+  }
+  return '<span class="seq-hand-card-rank' + redClass + '">' + escapeHtml(p.rank) + '</span>' +
+         '<span class="seq-hand-card-suit' + redClass + '">' + seqSuitSymbol(p.suit) + '</span>';
+}
+
+// ── seqGetValidCells: returns Set of "r,c" strings for valid placements ──
+function seqGetValidCells() {
+  if (!seqBoard || seqSelectedCard === null) return new Set();
+  var valid = new Set();
+  var card = seqSelectedCard;
+
+  if (seqIsTwoEyedJack(card)) {
+    // All empty non-FR cells
+    for (var r = 0; r < 10; r++) {
+      for (var c = 0; c < 10; c++) {
+        var cell = seqBoard[r][c];
+        if (cell.card !== 'FR' && cell.chip === null) {
+          valid.add(r + ',' + c);
+        }
+      }
+    }
+  } else if (seqIsOneEyedJack(card)) {
+    // All cells with opponent chip (not sequenced, not FR)
+    for (var r = 0; r < 10; r++) {
+      for (var c = 0; c < 10; c++) {
+        var cell = seqBoard[r][c];
+        if (cell.card !== 'FR' && cell.chip !== null && cell.chip !== seqMyTeam && !cell.sequenced) {
+          valid.add(r + ',' + c);
+        }
+      }
+    }
+  } else {
+    // Normal card: find positions where that card appears and cell is empty
+    for (var r = 0; r < 10; r++) {
+      for (var c = 0; c < 10; c++) {
+        var cell = seqBoard[r][c];
+        if (cell.card === card && cell.chip === null) {
+          valid.add(r + ',' + c);
+        }
+      }
+    }
+  }
+  return valid;
+}
+
+// ── Check if selected card is dead ──
+function seqIsDeadCard() {
+  if (!seqBoard || seqSelectedCard === null) return false;
+  var card = seqSelectedCard;
+  if (seqIsOneEyedJack(card) || seqIsTwoEyedJack(card)) return false;
+  // Check all positions: if every position is occupied by OUR team
+  var positions = [];
+  for (var r = 0; r < 10; r++) {
+    for (var c = 0; c < 10; c++) {
+      if (seqBoard[r][c].card === card) positions.push([r, c]);
+    }
+  }
+  if (positions.length === 0) return false;
+  return positions.every(function(pos) { return seqBoard[pos[0]][pos[1]].chip === seqMyTeam; });
+}
+
+// ── Select a card from hand ──
+function seqSelectCard(idx) {
+  if (seqTurnPlayerId !== socket.id) return; // not my turn
+  if (idx === seqSelectedCardIdx) {
+    // Deselect
+    seqSelectedCard = null;
+    seqSelectedCardIdx = -1;
+    seqJackMode = null;
+  } else {
+    seqSelectedCardIdx = idx;
+    seqSelectedCard = seqHand[idx];
+    if (seqIsOneEyedJack(seqSelectedCard)) {
+      seqJackMode = 'one-eyed';
+    } else if (seqIsTwoEyedJack(seqSelectedCard)) {
+      seqJackMode = 'two-eyed';
+    } else {
+      seqJackMode = null;
+    }
+  }
+  renderSeqBoard('seq-player-board', true);
+  renderSeqHand();
+  // Show/hide dead card button
+  var deadBar = document.getElementById('seq-dead-bar');
+  if (deadBar) {
+    deadBar.style.display = (seqSelectedCard !== null && seqIsDeadCard()) ? 'flex' : 'none';
+  }
+}
+
+// ── Tap a board cell ──
+function seqTapCell(r, c) {
+  if (!seqSelectedCard) return;
+  if (seqTurnPlayerId !== socket.id) return;
+  var key = r + ',' + c;
+  var validCells = seqGetValidCells();
+  if (!validCells.has(key)) return;
+
+  if (seqJackMode === 'one-eyed') {
+    socket.emit('seq-remove-chip', { card: seqSelectedCard, row: r, col: c });
+  } else {
+    socket.emit('seq-play-card', { card: seqSelectedCard, row: r, col: c });
+  }
+  // Clear selection
+  seqSelectedCard = null;
+  seqSelectedCardIdx = -1;
+  seqJackMode = null;
+}
+
+// ── Declare dead card ──
+function seqDeclareDeadCard() {
+  if (seqSelectedCard === null) return;
+  socket.emit('seq-declare-dead', { card: seqSelectedCard });
+  seqSelectedCard = null;
+  seqSelectedCardIdx = -1;
+  seqJackMode = null;
+  var deadBar = document.getElementById('seq-dead-bar');
+  if (deadBar) deadBar.style.display = 'none';
+}
+
+// ── Render the board ──
+function renderSeqBoard(containerId, interactive) {
+  var container = document.getElementById(containerId);
+  if (!container || !seqBoard) return;
+
+  var validCells = (interactive && seqSelectedCard !== null) ? seqGetValidCells() : new Set();
+  var html = '';
+
+  for (var r = 0; r < 10; r++) {
+    for (var c = 0; c < 10; c++) {
+      var cell = seqBoard[r][c];
+      var key = r + ',' + c;
+      var classes = 'seq-cell';
+
+      if (cell.card === 'FR') {
+        classes += ' seq-cell-free';
+      } else if (interactive && seqJackMode === 'one-eyed' && validCells.has(key)) {
+        classes += ' seq-cell-danger';
+      } else if (interactive && validCells.has(key)) {
+        classes += ' seq-cell-valid';
+      }
+      if (cell.sequenced) {
+        classes += ' seq-cell-sequenced';
+      }
+
+      var cellContent = '';
+      if (cell.card === 'FR') {
+        cellContent = '<span class="seq-free-star">⭐</span>';
+      } else {
+        var p = seqParseCard(cell.card);
+        var redClass = p.red ? ' red' : '';
+        cellContent = '<span class="seq-card-rank' + redClass + '">' + escapeHtml(p.rank) + '</span>' +
+                      '<span class="seq-card-suit' + redClass + '">' + seqSuitSymbol(p.suit) + '</span>';
+      }
+
+      // Chip
+      var chipHtml = '';
+      if (cell.chip !== null) {
+        chipHtml = '<div class="seq-chip seq-chip-' + cell.chip + '"></div>';
+      }
+
+      var clickAttr = '';
+      if (interactive && validCells.has(key)) {
+        clickAttr = ' onclick="seqTapCell(' + r + ',' + c + ')"';
+      }
+
+      html += '<div class="' + classes + '"' + clickAttr + '>' + cellContent + chipHtml + '</div>';
+    }
+  }
+  container.innerHTML = html;
+}
+
+// ── Render the hand ──
+function renderSeqHand() {
+  var container = document.getElementById('seq-hand');
+  if (!container) return;
+
+  var isMyTurn = seqTurnPlayerId === socket.id;
+  var html = '';
+
+  for (var i = 0; i < seqHand.length; i++) {
+    var card = seqHand[i];
+    var p = seqParseCard(card);
+    var classes = 'seq-hand-card';
+    if (p.red) classes += ' red';
+    if (!isMyTurn) classes += ' not-my-turn';
+    if (i === seqSelectedCardIdx) classes += ' selected';
+
+    var clickAttr = isMyTurn ? ' onclick="seqSelectCard(' + i + ')"' : '';
+    html += '<div class="' + classes + '"' + clickAttr + '>' + seqCardDisplay(card) + '</div>';
+  }
+  container.innerHTML = html || '<p style="color:rgba(255,255,255,0.3);font-size:0.8rem">No cards</p>';
+}
+
+// ── Update turn display ──
+function seqUpdateTurnDisplay(turnPlayerId) {
+  seqTurnPlayerId = turnPlayerId;
+  var turnPlayer = seqPlayerTeams.find(function(p) { return p.id === turnPlayerId; });
+  var turnName = turnPlayer ? turnPlayer.name : '?';
+  var isMyTurn = turnPlayerId === socket.id;
+
+  // Player screen
+  var turnInfo = document.getElementById('seq-turn-info');
+  if (turnInfo) {
+    if (isMyTurn) {
+      turnInfo.innerHTML = '<span class="seq-your-turn-banner">YOUR TURN</span>';
+    } else {
+      turnInfo.innerHTML = '<span class="seq-waiting-turn">Waiting for ' + escapeHtml(turnName) + '...</span>';
+    }
+  }
+
+  // Admin screen
+  var adminTurnInfo = document.getElementById('seq-admin-turn-info');
+  if (adminTurnInfo) {
+    if (turnPlayer) {
+      var dot = '<span class="seq-team-badge" style="background:' + (SEQ_TEAM_COLORS[turnPlayer.teamIdx] || '#aaa') + '"></span>';
+      adminTurnInfo.innerHTML = dot + escapeHtml(turnName) + '\'s turn';
+    }
+  }
+}
+
+// ── Update sequence counts display ──
+function seqUpdateCounts() {
+  // Player screen
+  var countsEl = document.getElementById('seq-seq-counts');
+  if (countsEl) {
+    var html = '';
+    for (var i = 0; i < seqTeamNames.length; i++) {
+      var color = SEQ_TEAM_COLORS[i] || '#aaa';
+      html += '<div class="seq-count-badge">' +
+        '<span class="seq-team-badge" style="background:' + color + '"></span>' +
+        escapeHtml(seqTeamNames[i]) + ': ' + (seqSeqCounts[i] || 0) + '/2' +
+      '</div>';
+    }
+    countsEl.innerHTML = html;
+  }
+
+  // Admin panel
+  var adminCounts = document.getElementById('seq-admin-seq-counts');
+  if (adminCounts) {
+    var html = '<div class="seq-admin-seq-counts-title">Sequences</div>';
+    for (var i = 0; i < seqTeamNames.length; i++) {
+      var color = SEQ_TEAM_COLORS[i] || '#aaa';
+      html += '<div class="seq-admin-count-row">' +
+        '<span class="seq-team-badge" style="background:' + color + '"></span>' +
+        '<span>' + escapeHtml(seqTeamNames[i]) + '</span>' +
+        '<span style="margin-left:auto;font-family:\'Fredoka One\',cursive;color:#ffd200">' + (seqSeqCounts[i] || 0) + '/2</span>' +
+      '</div>';
+    }
+    adminCounts.innerHTML = html;
+  }
+}
+
+// ── Update admin player panel ──
+function seqUpdateAdminPlayers(turnPlayerId) {
+  var adminPlayers = document.getElementById('seq-admin-players');
+  if (!adminPlayers) return;
+  var html = '<div class="seq-admin-players-title">Players</div>';
+  for (var i = 0; i < seqPlayerTeams.length; i++) {
+    var p = seqPlayerTeams[i];
+    var color = SEQ_TEAM_COLORS[p.teamIdx] || '#aaa';
+    var isCurrentTurn = p.id === turnPlayerId;
+    html += '<div class="seq-admin-player-row" style="' + (isCurrentTurn ? 'opacity:1' : 'opacity:0.6') + '">' +
+      '<span class="seq-team-badge" style="background:' + color + '"></span>' +
+      '<span>' + (p.avatar || '') + '</span>' +
+      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(p.name) + '</span>' +
+      (isCurrentTurn ? '<span style="font-size:0.65rem;color:#ffd200">▶</span>' : '') +
+    '</div>';
+  }
+  adminPlayers.innerHTML = html;
+}
+
+// ── Show toast notification ──
+function seqShowToast(msg) {
+  var existing = document.querySelector('.seq-toast');
+  if (existing) existing.remove();
+  var toast = document.createElement('div');
+  toast.className = 'seq-toast';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(function() { if (toast.parentNode) toast.remove(); }, 3000);
+}
+
+// ── Play Again (host) ──
+function seqPlayAgain() {
+  socket.emit('seq-play-again');
+}
+
+// ── Host End Game ──
+function seqHostEnd() {
+  if (confirm('End the Sequence game?')) {
+    socket.emit('seq-end-game');
+  }
+}
+
+// ── Results screen ──
+function seqShowResults(data) {
+  var banner = document.getElementById('seq-result-banner');
+  var countsEl = document.getElementById('seq-result-counts');
+  var playersEl = document.getElementById('seq-result-players');
+  var actionsEl = document.getElementById('seq-result-actions');
+
+  if (banner) {
+    if (data.hostEnded) {
+      banner.innerHTML = '<div class="seq-result-title">Game Ended</div><p style="color:rgba(255,255,255,0.4);margin-top:4px">Host ended the game</p>';
+    } else {
+      banner.innerHTML = '<div class="seq-result-title">Sequence Complete!</div>' +
+        '<div class="seq-result-winner-name">🏆 ' + escapeHtml(data.winnerName) + ' wins!</div>';
+      launchSeqConfetti();
+    }
+  }
+
+  if (countsEl && data.seqCounts) {
+    var html = '';
+    for (var i = 0; i < (data.teamNames || []).length; i++) {
+      var color = SEQ_TEAM_COLORS[i] || '#aaa';
+      html += '<div class="seq-result-count-row">' +
+        '<div class="seq-result-team-dot" style="background:' + color + '"></div>' +
+        '<span class="seq-result-team-name">' + escapeHtml((data.teamNames || [])[i] || 'Team ' + (i+1)) + '</span>' +
+        '<span class="seq-result-seq-count">' + (data.seqCounts[i] || 0) + ' seq</span>' +
+      '</div>';
+    }
+    countsEl.innerHTML = html;
+  }
+
+  if (playersEl && data.players) {
+    var html = '';
+    for (var i = 0; i < data.players.length; i++) {
+      var p = data.players[i];
+      var color = SEQ_TEAM_COLORS[p.teamIdx] || '#aaa';
+      html += '<div class="seq-result-player-row">' +
+        '<span class="seq-team-badge" style="background:' + color + '"></span>' +
+        '<span>' + (p.avatar || '') + '</span>' +
+        '<span style="flex:1">' + escapeHtml(p.name) + '</span>' +
+        '<span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">' + escapeHtml((data.teamNames || [])[p.teamIdx] || '') + '</span>' +
+      '</div>';
+    }
+    playersEl.innerHTML = html;
+  }
+
+  if (actionsEl) {
+    actionsEl.innerHTML =
+      (isSeqAdmin ? '<button class="btn btn-seq" onclick="seqPlayAgain()">Play Again</button>' : '<p class="waiting-text">Waiting for host...</p>') +
+      '<button class="btn btn-secondary" style="margin-top:8px" onclick="location.reload()">Back to Home</button>';
+  }
+
+  showScreen('screen-seq-results');
+}
+
+function launchSeqConfetti() {
+  var c = document.getElementById('seq-confetti');
+  if (!c) return;
+  c.innerHTML = '';
+  var colors = ['#667eea','#764ba2','#a78bfa','#ffd200','#ff6b9d','#2ecc71'];
+  for (var i = 0; i < 60; i++) {
+    var d = document.createElement('div');
+    d.className = 'confetti-dot';
+    d.style.cssText =
+      'left:' + (Math.random() * 100) + '%;' +
+      'background:' + colors[Math.floor(Math.random() * colors.length)] + ';' +
+      'animation-delay:' + (Math.random() * 1.5) + 's;' +
+      'animation-duration:' + (2.5 + Math.random() * 2) + 's;' +
+      'width:' + (6 + Math.random() * 8) + 'px;' +
+      'height:' + (6 + Math.random() * 8) + 'px;' +
+      'border-radius:' + (Math.random() > 0.5 ? '50%' : '3px') + ';';
+    c.appendChild(d);
+  }
+}
+
+// ═══════════════════════════════
+// SEQUENCE SOCKET EVENTS
+// ═══════════════════════════════
+
+socket.on('seq-player-list', function(players) {
+  renderPlayerList('seq-lobby-player-list', players);
+  renderPlayerList('seq-waiting-player-list', players);
+  var countEl = document.getElementById('seq-lobby-count');
+  if (countEl) countEl.textContent = '(' + players.length + ')';
+});
+
+socket.on('seq-game-start', function(data) {
+  // Store state
+  seqBoard = data.board;
+  seqHand = data.hand;
+  seqMyTeam = data.myTeam;
+  seqTeamNames = data.teamNames;
+  seqPlayerTeams = data.players;
+  seqSeqCounts = data.seqCounts;
+  seqSeqCells = [];
+  seqMode = data.mode;
+  seqSelectedCard = null;
+  seqSelectedCardIdx = -1;
+  seqJackMode = null;
+  isSeqAdmin = false;
+
+  seqUpdateTurnDisplay(data.turnPlayerId);
+  seqUpdateCounts();
+
+  showScreen('screen-seq-game');
+  renderSeqBoard('seq-player-board', seqTurnPlayerId === socket.id);
+  renderSeqHand();
+
+  // Hide dead bar initially
+  var deadBar = document.getElementById('seq-dead-bar');
+  if (deadBar) deadBar.style.display = 'none';
+});
+
+socket.on('seq-admin-start', function(data) {
+  isSeqAdmin = true;
+  seqBoard = data.board;
+  seqPlayerTeams = data.players;
+  seqTeamNames = data.teamNames;
+  seqSeqCounts = data.seqCounts;
+  seqSeqCells = [];
+  seqMode = data.mode;
+
+  seqUpdateTurnDisplay(data.turnPlayerId);
+  seqUpdateCounts();
+  seqUpdateAdminPlayers(data.turnPlayerId);
+
+  showScreen('screen-seq-admin');
+  renderSeqBoard('seq-admin-board', false);
+});
+
+socket.on('seq-board-update', function(data) {
+  seqBoard = data.board;
+  seqSeqCounts = data.seqCounts;
+  seqSeqCells = data.seqCells || [];
+
+  seqUpdateTurnDisplay(data.turnPlayerId);
+  seqUpdateCounts();
+
+  if (isSeqAdmin) {
+    renderSeqBoard('seq-admin-board', false);
+    seqUpdateAdminPlayers(data.turnPlayerId);
+    // Show last play info
+    if (data.lastPlay) {
+      var action = data.lastPlay.removed ? 'removed a chip' : 'played ' + data.lastPlay.card;
+      seqShowToast(data.lastPlay.playerName + ' ' + action);
+    }
+  } else {
+    // Clear card selection before re-render
+    seqSelectedCard = null;
+    seqSelectedCardIdx = -1;
+    seqJackMode = null;
+    var deadBar = document.getElementById('seq-dead-bar');
+    if (deadBar) deadBar.style.display = 'none';
+
+    renderSeqBoard('seq-player-board', seqTurnPlayerId === socket.id);
+    // Show last play info if not me
+    if (data.lastPlay && data.lastPlay.playerId !== socket.id) {
+      var action = data.lastPlay.removed ? 'removed a chip' : 'played ' + data.lastPlay.card;
+      seqShowToast(data.lastPlay.playerName + ' ' + action);
+    }
+  }
+});
+
+socket.on('seq-hand-update', function(data) {
+  seqHand = data.hand;
+  renderSeqHand();
+});
+
+socket.on('seq-dead-card', function(data) {
+  seqShowToast(data.playerName + ' discarded a dead card');
+});
+
+socket.on('seq-game-over', function(data) {
+  seqShowResults(data);
+});
+
+socket.on('seq-back-to-lobby', function(data) {
+  renderPlayerList('seq-lobby-player-list', data.players);
+  renderPlayerList('seq-waiting-player-list', data.players);
+  var countEl = document.getElementById('seq-lobby-count');
+  if (countEl) countEl.textContent = '(' + (data.players || []).length + ')';
+  // Reset state
+  seqBoard = null;
+  seqHand = [];
+  seqSelectedCard = null;
+  seqSelectedCardIdx = -1;
+  seqJackMode = null;
+  seqPlayerTeams = [];
+  seqSeqCounts = [];
+  seqSeqCells = [];
+
+  if (isSeqAdmin) {
+    showScreen('screen-seq-lobby');
+  } else {
+    showScreen('screen-seq-waiting');
+  }
+});
+
+socket.on('seq-error', function(data) {
+  var errEl = document.getElementById('seq-start-error');
+  if (errEl) {
+    errEl.textContent = data.message;
+    setTimeout(function() { errEl.textContent = ''; }, 3000);
+  }
 });
