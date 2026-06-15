@@ -333,24 +333,51 @@ io.on('connection', (socket) => {
       // ── Check if it's a Sequence room ──
       const seqRoom = seqRooms[code];
       if (seqRoom) {
-        if (seqRoom.phase !== 'lobby') return callback({ success: false, error: 'Game already in progress' });
         const existingSeq = seqRoom.players.find(p => p.name.toLowerCase() === name.toLowerCase());
         if (existingSeq) {
           if (existingSeq.disconnected) {
+            // Reconnect — update socket id everywhere (players array + seqPlayers)
             clearTimeout(existingSeq.disconnectTimer);
+            const oldId = existingSeq.id;
             existingSeq.id = socket.id;
             existingSeq.avatar = avatar || existingSeq.avatar;
             existingSeq.disconnected = false;
             delete existingSeq.disconnectTimer;
+            // Also patch seqPlayers so turn checks work
+            const sp = seqRoom.seqPlayers.find(p => p.id === oldId);
+            if (sp) sp.id = socket.id;
+            // Patch hands keyed by socket.id
+            if (seqRoom.hands[oldId]) {
+              seqRoom.hands[socket.id] = seqRoom.hands[oldId];
+              delete seqRoom.hands[oldId];
+            }
             socket.join(code);
             socket.roomCode = code;
             socket.playerName = name;
             callback({ success: true, reconnected: true, gameType: 'sequence' });
             io.to(code).emit('seq-player-list', seqRoom.players.map(playerData));
+            // Send full game state if game is active
+            if (seqRoom.phase === 'playing' && seqRoom.board) {
+              const mySp = seqRoom.seqPlayers.find(p => p.id === socket.id);
+              const turnPlayerId = seqRoom.seqPlayers[seqRoom.turnIdx]
+                ? seqRoom.seqPlayers[seqRoom.turnIdx].id : '';
+              io.to(socket.id).emit('seq-game-start', {
+                board: seqBoardState(seqRoom.board),
+                hand: seqRoom.hands[socket.id] || [],
+                myTeam: mySp ? mySp.teamIdx : 0,
+                teamNames: seqRoom.teamNames,
+                players: seqRoom.seqPlayers,
+                turnPlayerId,
+                seqCounts: seqRoom.seqCounts,
+                mode: seqRoom.mode,
+                reconnected: true,
+              });
+            }
             return;
           }
           return callback({ success: false, error: 'Name already taken' });
         }
+        if (seqRoom.phase !== 'lobby') return callback({ success: false, error: 'Game already in progress' });
         seqRoom.players.push({ id: socket.id, name, avatar: avatar || '🦊', score: 0 });
         socket.join(code);
         socket.roomCode = code;
@@ -1158,6 +1185,31 @@ io.on('connection', (socket) => {
           io.to(code).emit('seq-player-list', r.players.map(playerData));
         }, 120000);
         io.to(code).emit('seq-player-list', seqRoomDC.players.map(playerData));
+
+        // If game is active and it's this player's turn, skip to next connected player
+        if (seqRoomDC.phase === 'playing' && seqRoomDC.seqPlayers.length > 0) {
+          const isTurn = seqRoomDC.seqPlayers[seqRoomDC.turnIdx] &&
+                         seqRoomDC.seqPlayers[seqRoomDC.turnIdx].id === socket.id;
+          if (isTurn) {
+            const total = seqRoomDC.seqPlayers.length;
+            for (let i = 1; i < total; i++) {
+              const next = (seqRoomDC.turnIdx + i) % total;
+              const nextSp = seqRoomDC.seqPlayers[next];
+              const nextPlayer = seqRoomDC.players.find(p => p.id === nextSp.id);
+              if (!nextPlayer || !nextPlayer.disconnected) {
+                seqRoomDC.turnIdx = next;
+                break;
+              }
+            }
+            io.to(code).emit('seq-board-update', {
+              board: seqBoardState(seqRoomDC.board),
+              turnPlayerId: seqRoomDC.seqPlayers[seqRoomDC.turnIdx].id,
+              seqCounts: seqRoomDC.seqCounts,
+              seqCells: seqRoomDC.seqCells,
+              lastPlay: { playerName: seqPlayerDC.name, card: null, removed: false, skipped: true },
+            });
+          }
+        }
       }
       return;
     }
