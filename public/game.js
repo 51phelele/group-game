@@ -2219,6 +2219,7 @@ socket.on('seq-board-update', function(data) {
     if (deadBar) deadBar.style.display = 'none';
 
     renderSeqBoard('seq-player-board', seqTurnPlayerId === socket.id);
+    renderSeqHand(); // re-render hand so clickability matches new turn owner
     // Show last play info if not me
     if (data.lastPlay && data.lastPlay.playerId !== socket.id) {
       var action = data.lastPlay.removed ? 'removed a chip' : 'played ' + data.lastPlay.card;
@@ -2229,7 +2230,11 @@ socket.on('seq-board-update', function(data) {
 
 socket.on('seq-hand-update', function(data) {
   seqHand = data.hand;
-  renderSeqHand();
+  // Only re-render immediately for dead cards (turn stays same).
+  // For normal plays, seq-board-update arrives right after and re-renders with the correct turn state.
+  if (seqTurnPlayerId === socket.id) {
+    renderSeqHand();
+  }
 });
 
 socket.on('seq-dead-card', function(data) {
