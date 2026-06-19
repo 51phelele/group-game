@@ -779,9 +779,9 @@ socket.on('host-voting-view', function(data) {
   if (data.answers && data.answers.length > 0) {
     display.innerHTML = '<p class="ha-title">Answers in play:</p>' +
       data.answers.map(function(a, i) {
-        return '<div class="ha-card' + (a.isHostAnswer ? ' ha-host' : '') + '">' +
+        return '<div class="ha-card">' +
           '<span class="ha-num">' + (i + 1) + '</span>' +
-          '<span class="ha-answer">' + escapeHtml(a.answer) + (a.isHostAnswer ? ' <span class="ha-yours">(yours)</span>' : '') + '</span>' +
+          '<span class="ha-answer">' + escapeHtml(a.answer) + '</span>' +
         '</div>';
       }).join('');
   } else {
