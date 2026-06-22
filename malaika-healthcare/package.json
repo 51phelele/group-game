@@ -1,0 +1,16 @@
+{
+  "name": "malaika-healthcare",
+  "version": "1.0.0",
+  "description": "Malaika Healthcare - Patient portal and appointment booking",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["healthcare", "patient-portal", "appointments"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
